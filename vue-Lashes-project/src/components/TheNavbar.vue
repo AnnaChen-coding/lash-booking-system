@@ -1,0 +1,96 @@
+<template>
+  <header class="navbar">
+    <div class="left">
+      <div class="brand">
+    <img src="../assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.png" alt="logo" class="logo">
+    <span class="brand-name">Gaza & Glaze</span>
+  </div>
+    </div>
+
+    <div class="right">
+      <nav class="nav-links">
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/services">Services</RouterLink>
+        <RouterLink to="/booking">Booking</RouterLink>
+        <RouterLink to="/admin">Admin</RouterLink>
+      </nav>
+    </div>
+  </header>
+</template>
+
+<style>
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--color-primary-light);
+
+  position: sticky;
+  top: 0;
+  z-index: 100;
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  height: 40px;
+}
+
+.brand-name {
+  font-size: 40px;
+  font-weight: 600;
+  font-family: var(--font-heading)
+}
+
+
+.right {
+  display: flex;
+}
+
+.nav-links {
+  display: flex;
+  gap: 40px;
+  font-family: var(--font-heading)
+}
+
+.nav-links a {
+  color: var(--color-primary-light);
+  text-decoration: none;
+  position: relative;
+  display: inline-block;
+  padding-bottom: 6px;
+  font-size: var(--text-h3);
+}
+
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+
+  width: 0;
+  height: 2px;
+  background-color: white;
+
+  transition: width 0.3s ease;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+  background-color: var(--color-bg);
+
+
+}
+</style>
+<script lang="ts">
+
+</script>
