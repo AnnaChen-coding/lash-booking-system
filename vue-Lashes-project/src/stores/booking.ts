@@ -1,49 +1,49 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import type { BookingItem } from '@/types/booking'
+import {
+  createBooking,
+  deleteBooking,
+  fetchBookings,
+  patchBookingStatus,
+} from '@/api/bookings'
 import { isTimeSlotBooked } from '@/utils/booking'
 
 export const useBookingStore = defineStore('booking', () => {
-  const bookings = ref<BookingItem[]>(
-    JSON.parse(localStorage.getItem('bookings') || '[]')
-  )
+  const bookings = ref<BookingItem[]>([])
 
-  const addBooking = (newBooking: BookingItem) => {
-    bookings.value.push(newBooking)
+  const hydrateBookings = async () => {
+    bookings.value = await fetchBookings()
   }
 
- const isBooked = (date: string, time: string) => {
-  return isTimeSlotBooked(bookings.value, date, time)
-}
-
-  const removeBooking = (id: number) => {
-  bookings.value = bookings.value.filter(b => b.id !== id)
-}
-
-const updateStatus = (
-  id: number,
-  status: 'pending' | 'confirmed' | 'cancelled'
-) => {
-  const booking = bookings.value.find(b => b.id === id)
-  if (booking) {
-    booking.status = status
+  const addBooking = async (newBooking: BookingItem) => {
+    await createBooking(newBooking)
+    await hydrateBookings()
   }
-}
-// watch 持久化
-  watch(
-    bookings,
-    (newBookings) => {
-      localStorage.setItem('bookings', JSON.stringify(newBookings))
-    },
-    { deep: true }
-  )
+
+  const isBooked = (date: string, time: string) => {
+    return isTimeSlotBooked(bookings.value, date, time)
+  }
+
+  const removeBooking = async (id: number) => {
+    await deleteBooking(id)
+    await hydrateBookings()
+  }
+
+  const updateStatus = async (
+    id: number,
+    status: 'pending' | 'confirmed' | 'cancelled'
+  ) => {
+    await patchBookingStatus(id, status)
+    await hydrateBookings()
+  }
 
   return {
-  bookings,
-  addBooking,
-  isBooked,
-  removeBooking,
-  updateStatus,
-}
+    bookings,
+    hydrateBookings,
+    addBooking,
+    isBooked,
+    removeBooking,
+    updateStatus,
+  }
 })
-

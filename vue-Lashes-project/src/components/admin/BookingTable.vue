@@ -5,7 +5,7 @@ import type { BookingItem } from '@/types/booking'
 const bookingStore = useBookingStore()
 
 const handleDelete = (id: number) => {
-  bookingStore.removeBooking(id)
+  void bookingStore.removeBooking(id)
 }
 const props = defineProps<{
   bookings: BookingItem[]
@@ -13,7 +13,7 @@ const props = defineProps<{
 
 const handleStatusChange = (id: number, event: Event) => {
   const target = event.target as HTMLSelectElement
-  bookingStore.updateStatus(
+  void bookingStore.updateStatus(
     id,
     target.value as 'pending' | 'confirmed' | 'cancelled'
   )

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { services } from '@/data/services'
-
+// -- 属性定义 (Props) ---
+// 接收一个名为 service 的 string，代表当前被选中的服务名称
 const props = defineProps<{
   service: string
 }>()
-
+// --- 事件定义 (Emits) ---
+// 使用 update: 前缀是 Vue 3 v-model 的语法糖标准写法
+// 当点击按钮时，会触发此事件通知父组件更新数据
 const emit = defineEmits<{
   (e: 'update:service', value: string): void
 }>()
@@ -12,6 +15,8 @@ const emit = defineEmits<{
 
 <template>
   <div class="service-selector">
+    <!-- 动态类名：如果当前项的名称等于 Props 传入的名称，则应用 .active 样式 -->
+     <!-- 点击时向父组件发送最新的服务名称 -->
     <button
       v-for="item in services"
       :key="item.id"

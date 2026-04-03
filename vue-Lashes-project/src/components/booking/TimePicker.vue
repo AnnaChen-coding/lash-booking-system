@@ -3,20 +3,24 @@ import { ref } from 'vue'
 import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
 
+// --- 事件定义 ---
 const emit = defineEmits<{
   (e: 'select-time', value: { date: string; time: string }): void
 }>()
-
+// --- 状态与 Store ---
+// 实例化 Store
 const bookingStore = useBookingStore()
-
+// 存储用户选中的日期
 const selectedDate = ref('')
+// 存储用户选中的时间段
 const selectedTime = ref('')
-
+// --- 逻辑处理 ---
 const handleSelectTime = (time: string) => {
+  // 如果还没选日期，不允许选时间
   if (!selectedDate.value) return
 
   selectedTime.value = time
-
+// 将选中的日期和时间打包发送给父组件
   emit('select-time', {
     date: selectedDate.value,
     time,
@@ -43,6 +47,8 @@ const handleSelectTime = (time: string) => {
       <p class="slot-title">Available Time Slots</p>
 
       <div class="time-slots">
+         <!-- 1. 高亮：当前选中的时间  -->
+          <!-- 2. 禁用：调用 Store 的方法，检查该日期下的该时间是否已被占领 -->
         <button
           v-for="time in timeSlots"
           :key="time"

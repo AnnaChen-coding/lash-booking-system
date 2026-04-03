@@ -6,7 +6,7 @@
 
       <div class="review-list">
         <ReviewCard
-          v-for="item in reviews"
+          v-for="item in reviewStore.reviews"
           :key="item.id"
           :review="item"
         />
@@ -20,46 +20,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { ReviewItem } from '@/types/homereview'
-import { initialReviews } from '@/data/homereviews'
+import { useReviewStore } from '@/stores/homereview'
 import ReviewCard from './ReviewCard.vue'
 import ReviewForm from './ReviewForm.vue'
 
+const reviewStore = useReviewStore()
 
-// 响应式reviews（1. 管理）
-const reviews = ref(loadReviews())
-// 从 localStorage 读取评论数据
-function loadReviews() {
-  const saved = localStorage.getItem('reviews')
-
-  if (saved) {
-    return JSON.parse(saved)
-  }
-
-  return initialReviews
-}
-// 处理“新增评论”的函数
-// 这个函数会被子组件 ReviewForm 通过 emit 调用
 const handleAddReview = (data: {
   name: string
   rating: number
   comment: string
 }) => {
-  const newReview: ReviewItem = {
-    id: Date.now(),
-    name: data.name,
-    rating: data.rating,
-    comment: data.comment,
-    date: new Date().toISOString().split('T')[0] || '',
-  }
-
-  reviews.value.unshift(newReview)
-  saveReviews()
-}
-// 把当前 reviews 存到浏览器本地缓存
-function saveReviews() {
-  localStorage.setItem('reviews', JSON.stringify(reviews.value))
+  void reviewStore.addReview(data)
 }
 </script>
 

@@ -7,6 +7,8 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
 
+// --- 统一的状态管理 ---
+// 使用一个响应式对象 bookingData 收集所有步骤的数据
 const bookingData = ref<BookingFormData>({
   name: '',
   phone: '',
@@ -20,21 +22,23 @@ const route = useRoute()
 
 const bookingStore = useBookingStore()
 
-
+// --- 回调处理 ---
+// 处理时间选择组件传回的 date 和 time
 const handleTimeSelect = (value: { date: string; time: string }) => {
   bookingData.value.date = value.date
   bookingData.value.time = value.time
 }
-
-const handleSubmitBooking = (value: {
+// 最终提交逻辑
+const handleSubmitBooking = async (value: {
   name: string
   phone: string
   notes: string
 }) => {
+  // 1. 合并最后一步的表单数据
   bookingData.value.name = value.name
   bookingData.value.phone = value.phone
   bookingData.value.notes = value.notes
-
+// 2. 最终校验：确保前两个步骤的信息也存在
   if (
     !bookingData.value.service ||
     !bookingData.value.date ||
@@ -43,7 +47,7 @@ const handleSubmitBooking = (value: {
     alert('Please select a service, date, and time first.')
     return
   }
-
+// 冲突校验：检查在提交瞬间该时段是否被他人占用（双重保险）
   const alreadyBooked = bookingStore.isBooked(
     bookingData.value.date,
     bookingData.value.time
@@ -53,8 +57,8 @@ const handleSubmitBooking = (value: {
     alert('This time slot is already booked.')
     return
   }
-
-  bookingStore.addBooking({
+// 调用 API 层（经 Store）执行保存操作
+  await bookingStore.addBooking({
     id: Date.now(),
     name: bookingData.value.name,
     phone: bookingData.value.phone,
