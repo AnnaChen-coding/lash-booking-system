@@ -12,7 +12,16 @@
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/services">Services</RouterLink>
         <RouterLink to="/booking">Booking</RouterLink>
-        <RouterLink to="/admin">Admin</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/admin">Admin</RouterLink>
+        <RouterLink v-else to="/login">登录</RouterLink>
+        <button
+          v-if="auth.isAuthenticated"
+          type="button"
+          class="nav-logout"
+          @click="onLogout"
+        >
+          退出
+        </button>
       </nav>
     </div>
   </header>
@@ -90,7 +99,32 @@
 
 
 }
-</style>
-<script lang="ts">
 
+.nav-logout {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: var(--color-primary-light);
+  font-family: var(--font-heading);
+  font-size: var(--text-h3);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  align-self: center;
+}
+
+.nav-logout:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+</style>
+<script setup lang="ts">
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+const onLogout = () => {
+  auth.logout()
+  void router.push('/')
+}
 </script>

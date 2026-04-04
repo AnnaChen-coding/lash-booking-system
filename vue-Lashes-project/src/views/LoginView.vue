@@ -1,0 +1,143 @@
+<script setup lang="ts">
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore, MOCK_LOGIN_PASSWORD } from '@/stores/auth'
+
+const auth = useAuthStore()
+const route = useRoute()
+const router = useRouter()
+
+const form = reactive({
+  password: '',
+})
+
+const error = ref('')
+
+const handleSubmit = () => {
+  error.value = ''
+  if (!form.password) {
+    error.value = '请输入口令'
+    return
+  }
+  if (!auth.login(form.password)) {
+    error.value = '口令错误（演示默认：demo）'
+    return
+  }
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
+  void router.replace(redirect || '/')
+}
+</script>
+
+<template>
+  <section class="login-page">
+    <div class="login-card">
+      <h1 class="title">管理员登录（Mock）</h1>
+      <p class="hint">
+        演示口令：<code>{{ MOCK_LOGIN_PASSWORD }}</code>
+      </p>
+      <form class="form" @submit.prevent="handleSubmit">
+        <label class="label">
+          口令
+          <input
+            v-model="form.password"
+            type="password"
+            class="input"
+            autocomplete="current-password"
+            placeholder="输入 demo"
+          />
+        </label>
+        <p v-if="error" class="error">
+          {{ error }}
+        </p>
+        <button type="submit" class="submit">
+          Login
+        </button>
+      </form>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.login-page {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+  border-radius: 16px;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.title {
+  font-size: 1.5rem;
+  margin: 0 0 12px;
+}
+
+.hint {
+  margin: 0 0 24px;
+  font-size: 0.9rem;
+  color: var(--color-text-soft);
+}
+
+.hint code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font-size: 1rem;
+}
+
+.input:focus {
+  outline: 2px solid var(--color-primary-light, #c9a962);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #f87171;
+}
+
+.submit {
+  margin-top: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  background: var(--color-primary-light, #c9a962);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.submit:hover {
+  filter: brightness(1.05);
+}
+</style>
