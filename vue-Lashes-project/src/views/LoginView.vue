@@ -1,56 +1,96 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore, MOCK_LOGIN_PASSWORD } from '@/stores/auth'
+import { isSupabaseConfigured } from '@/lib/supabase'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
+const useCloudAuth = computed(() => isSupabaseConfigured())
+
 const form = reactive({
+  email: '',
   password: '',
 })
 
 const error = ref('')
+const loading = ref(false)
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   error.value = ''
-  if (!form.password) {
-    error.value = '请输入口令'
-    return
+  loading.value = true
+  try {
+    if (useCloudAuth.value) {
+      if (!form.email.trim() || !form.password) {
+        error.value = '请填写邮箱与密码'
+        return
+      }
+      const r = await auth.loginWithSupabase(form.email, form.password)
+      if (!r.ok) {
+        error.value = r.message
+        return
+      }
+    } else {
+      if (!form.password) {
+        error.value = '请输入口令'
+        return
+      }
+      if (!auth.loginMock(form.password)) {
+        error.value = '口令错误（演示默认：demo）'
+        return
+      }
+    }
+    const redirect =
+      typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
+    void router.replace(redirect || '/')
+  } finally {
+    loading.value = false
   }
-  if (!auth.login(form.password)) {
-    error.value = '口令错误（演示默认：demo）'
-    return
-  }
-  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin'
-  void router.replace(redirect || '/')
 }
 </script>
 
 <template>
   <section class="login-page">
     <div class="login-card">
-      <h1 class="title">管理员登录（Mock）</h1>
-      <p class="hint">
+      <h1 class="title">
+        {{ useCloudAuth ? '管理员登录' : '管理员登录（Mock）' }}
+      </h1>
+      <p v-if="!useCloudAuth" class="hint">
         演示口令：<code>{{ MOCK_LOGIN_PASSWORD }}</code>
       </p>
+      <p v-else class="hint">
+        使用在 Supabase
+        <strong>Authentication → Users</strong>
+        中创建的管理员邮箱与密码登录。
+      </p>
       <form class="form" @submit.prevent="handleSubmit">
+        <label v-if="useCloudAuth" class="label">
+          邮箱
+          <input
+            v-model="form.email"
+            type="email"
+            class="input"
+            autocomplete="username"
+            placeholder="admin@example.com"
+          />
+        </label>
         <label class="label">
-          口令
+          {{ useCloudAuth ? '密码' : '口令' }}
           <input
             v-model="form.password"
             type="password"
             class="input"
             autocomplete="current-password"
-            placeholder="输入 demo"
+            :placeholder="useCloudAuth ? '密码' : '输入 demo'"
           />
         </label>
         <p v-if="error" class="error">
           {{ error }}
         </p>
-        <button type="submit" class="submit">
-          Login
+        <button type="submit" class="submit" :disabled="loading">
+          {{ loading ? '登录中…' : 'Login' }}
         </button>
       </form>
     </div>
@@ -84,6 +124,7 @@ const handleSubmit = () => {
   margin: 0 0 24px;
   font-size: 0.9rem;
   color: var(--color-text-soft);
+  line-height: 1.5;
 }
 
 .hint code {
@@ -137,7 +178,12 @@ const handleSubmit = () => {
   font-weight: 600;
 }
 
-.submit:hover {
+.submit:hover:not(:disabled) {
   filter: brightness(1.05);
+}
+
+.submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 </style>

@@ -58,16 +58,20 @@ const handleSubmitBooking = async (value: {
     return
   }
 // 调用 API 层（经 Store）执行保存操作
-  await bookingStore.addBooking({
-    id: Date.now(),
-    name: bookingData.value.name,
-    phone: bookingData.value.phone,
-    service: bookingData.value.service,
-    date: bookingData.value.date,
-    time: bookingData.value.time,
-    notes: bookingData.value.notes,
-    status: 'pending',
-  })
+  try {
+    await bookingStore.addBooking({
+      id: Date.now(),
+      name: bookingData.value.name,
+      phone: bookingData.value.phone,
+      service: bookingData.value.service,
+      date: bookingData.value.date,
+      time: bookingData.value.time,
+      notes: bookingData.value.notes,
+      status: 'pending',
+    })
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '预约提交失败，请稍后重试')
+  }
 }
 onMounted(() => {
   const serviceFromQuery = route.query.service

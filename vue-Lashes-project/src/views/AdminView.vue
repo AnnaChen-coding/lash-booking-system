@@ -5,6 +5,7 @@ import BookingStats from '@/components/admin/BookingStats.vue'
 import BookingFilter from '@/components/admin/BookingFilter.vue'
 import { ref, computed } from 'vue'
 
+const bookingStore = useBookingStore()
 const filter = ref('all')
 
 const filteredBookings = computed(() => {
@@ -16,8 +17,6 @@ const filteredBookings = computed(() => {
     booking => booking.status === filter.value
   )
 })
-
-const bookingStore = useBookingStore()
 </script>
 
 <template>

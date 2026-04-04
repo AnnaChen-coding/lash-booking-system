@@ -2,9 +2,13 @@
   <header class="navbar">
     <div class="left">
       <div class="brand">
-    <img src="../assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.png" alt="logo" class="logo">
-    <span class="brand-name">Gaza & Glaze</span>
-  </div>
+        <img
+          src="../assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.png"
+          alt="logo"
+          class="logo"
+        />
+        <span class="brand-name">Gaza & Glaze</span>
+      </div>
     </div>
 
     <div class="right">
@@ -13,13 +17,8 @@
         <RouterLink to="/services">Services</RouterLink>
         <RouterLink to="/booking">Booking</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/admin">Admin</RouterLink>
-        <RouterLink v-else to="/login">登录</RouterLink>
-        <button
-          v-if="auth.isAuthenticated"
-          type="button"
-          class="nav-logout"
-          @click="onLogout"
-        >
+        <RouterLink v-else to="/login">Login</RouterLink>
+        <button v-if="auth.isAuthenticated" type="button" class="nav-logout" @click="onLogout">
           退出
         </button>
       </nav>
@@ -57,9 +56,8 @@
 .brand-name {
   font-size: 40px;
   font-weight: 600;
-  font-family: var(--font-heading)
+  font-family: var(--font-heading);
 }
-
 
 .right {
   display: flex;
@@ -68,7 +66,7 @@
 .nav-links {
   display: flex;
   gap: 40px;
-  font-family: var(--font-heading)
+  font-family: var(--font-heading);
 }
 
 .nav-links a {
@@ -96,8 +94,6 @@
 .nav-links a:hover::after {
   width: 100%;
   background-color: var(--color-bg);
-
-
 }
 
 .nav-logout {
@@ -117,14 +113,14 @@
 }
 </style>
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
 
-const auth = useAuthStore()
-const router = useRouter()
+const auth = useAuthStore();
+const router = useRouter();
 
-const onLogout = () => {
-  auth.logout()
-  void router.push('/')
-}
+const onLogout = async () => {
+  await auth.logout();
+  void router.push("/");
+};
 </script>

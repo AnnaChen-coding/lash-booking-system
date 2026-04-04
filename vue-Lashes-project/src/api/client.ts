@@ -1,6 +1,6 @@
 /**
- * 统一 HTTP 客户端。设置环境变量 VITE_API_BASE_URL 后走远程接口；
- * 未设置时由各模块的本地实现（如 localStorage）处理，不调用本文件。
+ * 统一 HTTP 客户端。预约与评价优先走 Supabase（见 VITE_SUPABASE_*）；
+ * 否则设置 VITE_API_BASE_URL 时走本文件的 fetch；再否则为 localStorage 等本地实现。
  */
 
 export class ApiError extends Error {

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { useAuthStore } from '@/stores/auth'
 
 // --- 事件定义 ---
 const emit = defineEmits<{
@@ -10,8 +12,18 @@ const emit = defineEmits<{
 // --- 状态与 Store ---
 // 实例化 Store
 const bookingStore = useBookingStore()
+const auth = useAuthStore()
 // 存储用户选中的日期
 const selectedDate = ref('')
+
+watch(
+  () => selectedDate.value,
+  (d) => {
+    if (!d || !isSupabaseConfigured() || auth.isAuthenticated) return
+    void bookingStore.loadTakenSlotsForDate(d)
+  },
+  { immediate: true }
+)
 // 存储用户选中的时间段
 const selectedTime = ref('')
 // --- 逻辑处理 ---
