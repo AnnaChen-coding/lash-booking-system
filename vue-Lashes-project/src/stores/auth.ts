@@ -12,6 +12,8 @@ export const MOCK_LOGIN_PASSWORD = 'demo'
 export const useAuthStore = defineStore('auth', () => {
   const mockToken = ref<string | null>(null)
   const supabaseSession = ref<Session | null>(null)
+  /** Supabase：当前 JWT 邮箱是否在 public.admin_emails 白名单（由 RPC 刷新） */
+  const isAdminUser = ref(false)
 
   const hydrateMock = () => {
     try {
@@ -28,6 +30,33 @@ export const useAuthStore = defineStore('auth', () => {
     return Boolean(mockToken.value)
   })
 
+  /** 可进入 /admin 并拉取全量预约：Mock 登录成功，或 Supabase 已登录且在白名单 */
+  const canAccessAdmin = computed(() => {
+    if (!isSupabaseConfigured()) {
+      return Boolean(mockToken.value)
+    }
+    return Boolean(supabaseSession.value?.user) && isAdminUser.value
+  })
+
+  async function refreshAdminStatus(): Promise<void> {
+    if (!isSupabaseConfigured()) {
+      isAdminUser.value = false
+      return
+    }
+    if (!supabaseSession.value?.user) {
+      isAdminUser.value = false
+      return
+    }
+    const sb = getSupabase()
+    const { data, error } = await sb.rpc('current_user_is_admin')
+    if (error) {
+      console.warn('[auth] current_user_is_admin:', error.message)
+      isAdminUser.value = false
+      return
+    }
+    isAdminUser.value = Boolean(data)
+  }
+
   /** 启动时调用：恢复 Supabase 会话并订阅变化（勿与 booking store 静态互相 import） */
   async function bootstrapAuth(): Promise<void> {
     if (!isSupabaseConfigured()) {
@@ -40,12 +69,14 @@ export const useAuthStore = defineStore('auth', () => {
       data: { session },
     } = await sb.auth.getSession()
     supabaseSession.value = session
+    await refreshAdminStatus()
 
-    sb.auth.onAuthStateChange((_event, session) => {
+    sb.auth.onAuthStateChange(async (_event, session) => {
       supabaseSession.value = session
+      await refreshAdminStatus()
       void import('@/stores/booking').then(({ useBookingStore }) => {
         const bookingStore = useBookingStore()
-        if (session) {
+        if (session && isAdminUser.value) {
           void bookingStore.hydrateBookings()
         } else {
           bookingStore.clearAfterLogout()
@@ -80,6 +111,15 @@ export const useAuthStore = defineStore('auth', () => {
       return { ok: false, message: error.message }
     }
     supabaseSession.value = data.session ?? null
+    await refreshAdminStatus()
+    if (!isAdminUser.value) {
+      await sb.auth.signOut()
+      supabaseSession.value = null
+      return {
+        ok: false,
+        message: '该邮箱不在管理员名单中，无法进入后台（请在 Supabase 表 admin_emails 中添加）',
+      }
+    }
     return { ok: true }
   }
 
@@ -88,6 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
       const sb = getSupabase()
       await sb.auth.signOut()
       supabaseSession.value = null
+      isAdminUser.value = false
     } else {
       mockToken.value = null
       try {
@@ -104,8 +145,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     supabaseSession,
+    isAdminUser,
     isAuthenticated,
+    canAccessAdmin,
     bootstrapAuth,
+    refreshAdminStatus,
     loginMock,
     loginWithSupabase,
     logout,

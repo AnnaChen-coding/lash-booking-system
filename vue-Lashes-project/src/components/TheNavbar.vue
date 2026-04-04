@@ -16,8 +16,8 @@
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/services">Services</RouterLink>
         <RouterLink to="/booking">Booking</RouterLink>
-        <RouterLink v-if="auth.isAuthenticated" to="/admin">Admin</RouterLink>
-        <RouterLink v-else to="/login">Login</RouterLink>
+        <RouterLink v-if="auth.canAccessAdmin" to="/admin">Admin</RouterLink>
+        <RouterLink v-else-if="!auth.isAuthenticated" to="/login">Login</RouterLink>
         <button v-if="auth.isAuthenticated" type="button" class="nav-logout" @click="onLogout">
           退出
         </button>

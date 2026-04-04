@@ -19,7 +19,7 @@ const selectedDate = ref('')
 watch(
   () => selectedDate.value,
   (d) => {
-    if (!d || !isSupabaseConfigured() || auth.isAuthenticated) return
+    if (!d || !isSupabaseConfigured() || auth.canAccessAdmin) return
     void bookingStore.loadTakenSlotsForDate(d)
   },
   { immediate: true }

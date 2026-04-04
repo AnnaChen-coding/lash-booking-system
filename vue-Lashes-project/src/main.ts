@@ -26,7 +26,7 @@ void (async () => {
   await authStore.bootstrapAuth()
 
   const loadAllBookings =
-    !isSupabaseConfigured() || authStore.isAuthenticated
+    !isSupabaseConfigured() || authStore.canAccessAdmin
 
   await Promise.all([
     loadAllBookings ? bookingStore.hydrateBookings() : Promise.resolve(),

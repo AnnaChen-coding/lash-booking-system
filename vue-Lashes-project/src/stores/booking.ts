@@ -18,7 +18,7 @@ export const useBookingStore = defineStore('booking', () => {
   const slotTakenByDate = reactive<Record<string, string[]>>({})
 
   const hydrateBookings = async () => {
-    if (isSupabaseConfigured() && !useAuthStore().isAuthenticated) {
+    if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
       bookings.value = []
       return
     }
@@ -27,20 +27,20 @@ export const useBookingStore = defineStore('booking', () => {
 
   const loadTakenSlotsForDate = async (date: string) => {
     if (!date || !isSupabaseConfigured()) return
-    if (useAuthStore().isAuthenticated) return
+    if (useAuthStore().canAccessAdmin) return
     const times = await fetchBookedTimesForDate(date)
     slotTakenByDate[date] = times
   }
 
   const isBooked = (date: string, time: string) => {
-    if (isSupabaseConfigured() && !useAuthStore().isAuthenticated) {
+    if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
       return slotTakenByDate[date]?.includes(time) ?? false
     }
     return isTimeSlotBooked(bookings.value, date, time)
   }
 
   const mergeSlotIntoCache = (date: string, time: string) => {
-    if (!isSupabaseConfigured() || useAuthStore().isAuthenticated) return
+    if (!isSupabaseConfigured() || useAuthStore().canAccessAdmin) return
     const cur = slotTakenByDate[date] ?? []
     if (cur.includes(time)) return
     slotTakenByDate[date] = [...cur, time].sort()

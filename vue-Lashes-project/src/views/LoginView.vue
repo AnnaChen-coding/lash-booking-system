@@ -61,9 +61,11 @@ const handleSubmit = async () => {
         演示口令：<code>{{ MOCK_LOGIN_PASSWORD }}</code>
       </p>
       <p v-else class="hint">
-        使用在 Supabase
+        使用已在
+        <strong>表 admin_emails</strong>
+        中登记的邮箱，并在
         <strong>Authentication → Users</strong>
-        中创建的管理员邮箱与密码登录。
+        创建同邮箱账号后登录。未在白名单的账号无法进入后台。
       </p>
       <form class="form" @submit.prevent="handleSubmit">
         <label v-if="useCloudAuth" class="label">

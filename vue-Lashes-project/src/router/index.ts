@@ -36,7 +36,7 @@ const routes = [
     path: '/admin',
     name: 'admin',
     component: AdminView,
-    meta: { requiresAuth: true },
+    meta: { requiresAdmin: true },
   },
 ]
 
@@ -48,14 +48,19 @@ const router = createRouter({
 router.beforeEach((to: RouteLocationNormalized) => {
   const auth = useAuthStore()
 
-  if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return {
-      name: 'login',
-      query: { redirect: to.fullPath },
+  if (to.meta.requiresAdmin) {
+    if (!auth.canAccessAdmin) {
+      if (!auth.isAuthenticated) {
+        return {
+          name: 'login',
+          query: { redirect: to.fullPath },
+        }
+      }
+      return { name: 'home' }
     }
   }
 
-  if (to.meta.guestOnly && auth.isAuthenticated) {
+  if (to.meta.guestOnly && auth.canAccessAdmin) {
     const redirect =
       typeof to.query.redirect === 'string' && to.query.redirect.startsWith('/')
         ? to.query.redirect

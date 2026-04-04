@@ -15,6 +15,7 @@ interface ImportMeta {
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
+    requiresAdmin?: boolean
     guestOnly?: boolean
   }
 }

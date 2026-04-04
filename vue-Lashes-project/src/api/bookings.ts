@@ -102,27 +102,55 @@ export async function fetchBookings(): Promise<BookingItem[]> {
 export async function createBooking(item: BookingItem): Promise<BookingItem> {
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
-    const { data, error } = await sb
-      .from('bookings')
-      .insert({
-        name: item.name,
-        phone: item.phone,
-        service: item.service,
-        date: item.date,
-        time: item.time,
-        notes: item.notes,
-        status: item.status,
-      })
-      .select(BOOKING_COLUMNS)
-      .single()
+    const payload = {
+      name: item.name,
+      phone: item.phone,
+      service: item.service,
+      date: item.date,
+      time: item.time,
+      notes: item.notes,
+      status: item.status,
+    }
+
+    const {
+      data: { session },
+    } = await sb.auth.getSession()
+
+    let asBookingAdmin = false
+    if (session?.user) {
+      const { data: adminFlag, error: rpcErr } = await sb.rpc(
+        'current_user_is_admin'
+      )
+      if (!rpcErr) {
+        asBookingAdmin = Boolean(adminFlag)
+      }
+    }
+
+    // 匿名无 SELECT 权限：insert 后不能 .select()，否则会因 RLS 读不到新行而整笔失败
+    if (asBookingAdmin) {
+      const { data, error } = await sb
+        .from('bookings')
+        .insert(payload)
+        .select(BOOKING_COLUMNS)
+        .single()
+      if (error) {
+        if (isUniqueViolation(error)) {
+          throw new Error('该时段刚刚已被预约，请另选时间')
+        }
+        throw error
+      }
+      if (!data) throw new Error('预约写入后未返回数据')
+      return rowToBooking(data as Record<string, unknown>)
+    }
+
+    const { error } = await sb.from('bookings').insert(payload)
     if (error) {
       if (isUniqueViolation(error)) {
         throw new Error('该时段刚刚已被预约，请另选时间')
       }
       throw error
     }
-    if (!data) throw new Error('预约写入后未返回数据')
-    return rowToBooking(data as Record<string, unknown>)
+    return item
   }
   if (isRemoteApi()) {
     return request<BookingItem>('POST', '/bookings', { body: item })
