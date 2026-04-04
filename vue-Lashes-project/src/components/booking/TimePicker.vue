@@ -49,6 +49,7 @@ const handleSelectTime = (time: string) => {
       <div class="time-slots">
          <!-- 1. 高亮：当前选中的时间  -->
           <!-- 2. 禁用：调用 Store 的方法，检查该日期下的该时间是否已被占领 -->
+           <!-- 条件渲染 -->
         <button
           v-for="time in timeSlots"
           :key="time"
