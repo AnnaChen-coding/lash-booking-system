@@ -2,34 +2,48 @@ import type { BookingItem } from '@/types/booking'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import { isRemoteApi, request } from './client'
 
+// 本地存储的键名
 const STORAGE_KEY = 'bookings'
 
+// 这个是给 Supabase .select() 用的字段列表。
 const BOOKING_COLUMNS =
   'id,name,phone,service,date,time,notes,status' as const
 
+// 读取本地存储
 function readLocal(): BookingItem[] {
+  // 尝试将本地存储的 JSON 字符串转换为 BookingItem 数组
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as BookingItem[]
   } catch {
+    // 如果转换失败，则返回空数组
     return []
   }
 }
-
+// 写入本地存储
 function writeLocal(items: BookingItem[]) {
+  // 将 BookingItem 数组转换为 JSON 字符串，并写入本地存储
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
 }
-
+// 将值转换为 ID
 function toId(value: unknown): number {
+  // 如果值是数字，并且是有限的，则返回值
   if (typeof value === 'number' && Number.isFinite(value)) return value
+  // 如果值是字符串，则转换为数字
   if (typeof value === 'string') {
+    // 转换为数字
     const n = Number(value)
+    // 如果转换后的数字是有限的，则返回数字
     if (Number.isFinite(n)) return n
   }
+  // 如果转换失败，则抛出错误
   throw new Error('Invalid id from database')
 }
 
+// 将数据库行转换为 BookingItem
 function rowToBooking(row: Record<string, unknown>): BookingItem {
+  // 获取状态
   const status = row.status
+  // 如果状态不是 pending、confirmed 或 cancelled，则抛出错误
   if (
     status !== 'pending' &&
     status !== 'confirmed' &&
@@ -37,19 +51,29 @@ function rowToBooking(row: Record<string, unknown>): BookingItem {
   ) {
     throw new Error('Invalid booking status from database')
   }
-  return {
+  // 将数据库行转换为 BookingItem
+    return {
+    // 将 ID 转换为数字
     id: toId(row.id),
     name: String(row.name ?? ''),
+    // 将电话转换为字符串
     phone: String(row.phone ?? ''),
+    // 将服务转换为字符串
     service: String(row.service ?? ''),
+    // 将日期转换为字符串
     date: String(row.date ?? ''),
+    // 将时间转换为字符串
     time: String(row.time ?? ''),
+    // 将备注转换为字符串
     notes: String(row.notes ?? ''),
+    // 返回 BookingItem
     status,
   }
 }
 
+// 判断是否是唯一约束冲突 23505 是 PostgreSQL 的唯一约束冲突错误代码
 function isUniqueViolation(err: unknown): boolean {
+  // 如果 err 是对象，并且不为 null，并且有 code 属性，并且 code 属性为 23505，则返回 true
   return (
     typeof err === 'object' &&
     err !== null &&
@@ -71,10 +95,14 @@ export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
       .map((b) => b.time)
   }
   const sb = getSupabase()
+  // 调用 RPC 函数 get_booked_times_for_date
   const { data, error } = await sb.rpc('get_booked_times_for_date', {
     p_date: date,
   })
+  // 如果调用 RPC 函数失败，则抛出错误
   if (error) throw error
+  // 如果 data 是数组，则返回 data 转换为 string[]
+  // 否则返回空数组
   return Array.isArray(data) ? (data as string[]) : []
 }
 
@@ -83,40 +111,64 @@ export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
  *
  * Supabase：仅登录用户可 SELECT 全表；匿名请用 fetchBookedTimesForDate。
  */
+// 获取所有预约
 export async function fetchBookings(): Promise<BookingItem[]> {
+  // 如果 Supabase 配置了，则调用 Supabase 的 API
   if (isSupabaseConfigured()) {
+    // 获取 Supabase 客户端
     const sb = getSupabase()
+    // 调用 bookings 表的 select 查询
     const { data, error } = await sb
+    // 操作数据库里的 bookings 表
       .from('bookings')
+      // 选择 BOOKING_COLUMNS 列，并按 id 排序
       .select(BOOKING_COLUMNS)
+      // 按 id 排序
       .order('id', { ascending: true })
+    // 如果查询失败，则抛出错误
     if (error) throw error
+    // 如果查询成功，则返回 data 转换为 BookingItem[]
+    // 如果 data 为空，则返回空数组
     return (data ?? []).map((r) => rowToBooking(r as Record<string, unknown>))
   }
+  // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {
+    // 调用远程 API
     return request<BookingItem[]>('GET', '/bookings')
   }
+  // 否则读取本地存储
   return readLocal()
 }
-
+// 新增一个预约
 export async function createBooking(item: BookingItem): Promise<BookingItem> {
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
+    // 创建 payload
     const payload = {
+      // 将 name 转换为字符串
       name: item.name,
+      // 将 phone 转换为字符串
       phone: item.phone,
+      // 将 service 转换为字符串
       service: item.service,
+      // 将 date 转换为字符串
       date: item.date,
+      // 将 time 转换为字符串
       time: item.time,
+      // 将 notes 转换为字符串
       notes: item.notes,
+      // 将 status 转换为字符串
       status: item.status,
     }
 
+    // 获取当前会话
     const {
       data: { session },
     } = await sb.auth.getSession()
 
+    // 判断是否是管理员
     let asBookingAdmin = false
+    // 如果当前会话有用户，则判断是否是管理员
     if (session?.user) {
       const { data: adminFlag, error: rpcErr } = await sb.rpc(
         'current_user_is_admin'
@@ -129,10 +181,15 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
     // 匿名无 SELECT 权限：insert 后不能 .select()，否则会因 RLS 读不到新行而整笔失败
     if (asBookingAdmin) {
       const { data, error } = await sb
+      // 指定表名
         .from('bookings')
+        // 插入 payload
         .insert(payload)
+        // 选择 BOOKING_COLUMNS 列
         .select(BOOKING_COLUMNS)
+        // 返回单行数据
         .single()
+      // 如果插入失败，则抛出错误
       if (error) {
         if (isUniqueViolation(error)) {
           throw new Error('该时段刚刚已被预约，请另选时间')
@@ -140,11 +197,18 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
         throw error
       }
       if (!data) throw new Error('预约写入后未返回数据')
+      // 将数据转换为 BookingItem
       return rowToBooking(data as Record<string, unknown>)
     }
-
-    const { error } = await sb.from('bookings').insert(payload)
+    // 非管理员
+    const { error } = await sb
+    // 指定表名
+    .from('bookings')
+    // 插入 payload
+    .insert(payload)
+    // 如果插入失败，则抛出错误
     if (error) {
+      // 如果错误是唯一约束冲突，则抛出错误
       if (isUniqueViolation(error)) {
         throw new Error('该时段刚刚已被预约，请另选时间')
       }
@@ -152,47 +216,74 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
     }
     return item
   }
+  // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {
     return request<BookingItem>('POST', '/bookings', { body: item })
   }
+  // 否则读取本地存储
   const items = readLocal()
+  // 将 item 添加到 items 数组中
   items.push(item)
+  // 将 items 数组写入本地存储
   writeLocal(items)
   return item
 }
-
+// 删除预约
 export async function deleteBooking(id: number): Promise<void> {
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
-    const { error } = await sb.from('bookings').delete().eq('id', id)
+    const { error } = await sb
+    // 指定表名
+    .from('bookings')
+    // 删除
+    .delete()
+    // 等于 id
+    .eq('id', id)
+    // 如果删除失败，则抛出错误
     if (error) throw error
     return
   }
   if (isRemoteApi()) {
+    // 调用远程 API
     await request<void>('DELETE', `/bookings/${id}`)
     return
   }
+  // 将本地存储的 items 数组中 id 不等于 id 的行写入本地存储
   writeLocal(readLocal().filter((b) => b.id !== id))
 }
-
+// 更新预约状态
 export async function patchBookingStatus(
   id: number,
   status: BookingItem['status']
 ): Promise<void> {
+  // 如果 Supabase 配置了，则调用 Supabase 的 API
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
-    const { error } = await sb.from('bookings').update({ status }).eq('id', id)
+    const { error } = await sb
+    // 指定表名
+    .from('bookings')
+    // 更新
+    .update({ status })
+    // 等于 id
+    .eq('id', id)
+    // 如果更新失败，则抛出错误
     if (error) throw error
     return
   }
+  // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {
+    // 调用远程 API
     await request<void>('PATCH', `/bookings/${id}`, { body: { status } })
     return
   }
+  // 否则读取本地存储
   const items = readLocal()
+  // 找到 id 等于 id 的行
   const booking = items.find((b) => b.id === id)
+  // 如果找到，则更新状态
   if (booking) {
     booking.status = status
+    // 将 items 数组写入本地存储
     writeLocal(items)
   }
 }
