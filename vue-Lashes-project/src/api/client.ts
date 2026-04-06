@@ -4,13 +4,14 @@
  */
 // 自定义错误类
 export class ApiError extends Error {
-
+  // 构造函数
   constructor(
     public status: number,
     message: string,
     public body?: unknown
   ) {
     super(message)
+    // 设置错误名称
     this.name = 'ApiError'
   }}
 // 环境变量里读取 VITE_API_BASE_URL，如果没有则返回空字符串
@@ -56,7 +57,6 @@ export async function request<T>(
   // 发送请求
   const res = await fetch(url, init)
   // 如果请求不成功，则抛出错误
-
   if (!res.ok) {
     // 先声明一个变量 body，准备等会儿拿来装“服务器返回的错误内容”
     let body: unknown

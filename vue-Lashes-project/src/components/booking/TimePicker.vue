@@ -15,13 +15,18 @@ const bookingStore = useBookingStore()
 const auth = useAuthStore()
 // 存储用户选中的日期
 const selectedDate = ref('')
-
+// 监听用户选中的日期，如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
 watch(
+  // 监听 selectedDate.value 的变化
   () => selectedDate.value,
+
   (d) => {
+    // 如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
     if (!d || !isSupabaseConfigured() || auth.canAccessAdmin) return
+    // 否则调用 Store 的方法，加载已占时段
     void bookingStore.loadTakenSlotsForDate(d)
   },
+  // 立即执行
   { immediate: true }
 )
 // 存储用户选中的时间段
