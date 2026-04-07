@@ -1,66 +1,148 @@
-# 美睫店官网 · Vue 3
+# 💅 美睫店预约官网（Vue 3 + TypeScript + Supabase）
 
-[![Vue 3](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs)](https://vuejs.org/)
-[![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite)](https://vitejs.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
-
-基于 **Vue 3 + TypeScript + Vite** 的美睫门店前端：**首页展示**、**服务浏览**、**在线预约**、**用户评价**，以及需登录的 **后台预约管理**（管理员白名单）。数据层支持 **Supabase**、自建 **REST API**，或未配置时使用浏览器 **localStorage** 演示。
+> 一个面向真实业务场景的预约系统前端项目，重点解决「预约流程设计」「并发冲突控制」「权限与数据安全」等实际问题。
 
 ---
 
-## 目录
+## 🚀 项目亮点
 
-- [功能概览](#功能概览)
-- [技术栈](#技术栈)
-- [环境要求](#环境要求)
-- [快速开始](#快速开始)
-- [环境变量](#环境变量)
-- [Supabase 配置（推荐）](#supabase-配置推荐)
-- [通用 REST 后端](#通用-rest-后端)
-- [后台与登录](#后台与登录)
-- [路由一览](#路由一览)
-- [项目结构](#项目结构)
-- [开发建议](#开发建议)
-- [许可](#许可)
+### ✅ 完整预约业务闭环
+
+实现用户从浏览到预约的完整链路：
+
+首页 → 服务选择 → 时间选择 → 提交预约 → 后台管理
+
+* 基于 **组件 → Pinia → API → 状态回写** 构建前端数据流闭环
+* 保证用户操作路径清晰、数据状态一致
 
 ---
 
-## 功能概览
+### ⚡ 预约冲突控制（核心亮点）
 
-| 模块 | 说明 |
-|------|------|
-| **首页** `/` | 轮播、服务精选、评价、门店信息、行动号召（CTA） |
-| **服务** `/services` | 服务列表与筛选 |
-| **预约** `/booking` | 选择服务、日期与时段并提交预约 |
-| **登录** `/login` | 未配 Supabase 时为本地 Mock；配置后为 Supabase Auth 邮箱密码 |
-| **后台** `/admin` | 预约列表、筛选与统计；**仅 `admin_emails` 白名单邮箱**可访问 |
+实现「前端优化 + 后端兜底」的双层防护：
 
-**数据优先级**：配置了 `VITE_SUPABASE_*` 时走 Supabase → 否则若配置了 `VITE_API_BASE_URL` 走 REST → 否则使用 **localStorage** 本地演示。
+* 前端：
 
----
+  * `slotTakenByDate`：按日期缓存已占用时段，减少重复请求
+  * `isBooked()`：实时判断时间是否被占用
+* 后端：
 
-## 技术栈
+  * 数据库唯一约束（date + time）防止并发冲突
 
-| 类别 | 技术 |
-|------|------|
-| 框架 | Vue 3、Vue Router 5、Pinia |
-| 构建 | Vite 7 |
-| UI | Element Plus |
-| 质量 | TypeScript、ESLint、Oxlint、vue-tsc |
-| 后端（可选） | Supabase（`@supabase/supabase-js`）或自建 REST |
+👉 在减少请求的同时，保证预约结果的准确性
 
 ---
 
-## 环境要求
+### 🔐 权限与数据安全
 
-- **Node.js**：`^20.19.0` 或 `>=22.12.0`（见仓库根目录 `package.json` 的 `engines`）
+基于 Supabase 构建权限体系：
+
+* 登录认证（Auth）
+* `admin_emails` 白名单控制管理员身份
+* RLS（Row Level Security）控制数据访问范围
+
+👉 实现普通用户与管理员的数据隔离
 
 ---
 
-## 快速开始
+### 🧩 多数据源降级策略
+
+支持三种数据源自动切换：
+
+1. Supabase（云数据库）
+2. REST API（联调模式）
+3. localStorage（本地演示）
+
+👉 保证项目在不同环境下都能运行
+
+---
+
+### 🏗️ 工程化架构设计
+
+项目采用清晰分层结构：
+
+* `views/`：页面级组件
+* `components/`：业务组件
+* `stores/`：状态管理（Pinia）
+* `api/`：数据访问层（统一数据源）
+* `router/`：路由与权限控制
+* `types/`：类型定义
+
+👉 模块职责清晰，具备良好可维护性
+
+---
+
+## 📱 功能模块
+
+| 模块   | 路由          | 说明                    |
+| ---- | ----------- | --------------------- |
+| 首页   | `/`         | 门店展示、服务推荐             |
+| 服务页  | `/services` | 服务浏览与筛选               |
+| 预约页  | `/booking`  | 时间选择、冲突校验             |
+| 登录页  | `/login`    | 用户登录（Supabase / Mock） |
+| 后台管理 | `/admin`    | 预约管理、状态更新（管理员）        |
+
+---
+
+## 🛠️ 技术栈
+
+* Vue 3（Composition API）
+* TypeScript
+* Vite
+* Pinia
+* Vue Router
+* Element Plus
+* Supabase（Auth + PostgreSQL + RLS）
+
+---
+
+## 🧠 核心设计说明
+
+### 📌 预约缓存设计
+
+* 以「日期」作为 key 缓存已占用时间段
+* 避免用户频繁切换日期时重复请求
+* 已访问日期直接读取缓存
+
+👉 提升性能与用户体验
+
+---
+
+### 📌 并发问题处理
+
+用户快速切换日期可能产生多个请求：
+
+* 通过请求标识或忽略过期响应
+* 防止旧请求覆盖新数据
+
+---
+
+### 📌 数据安全策略
+
+* 前端格式校验（提升体验）
+* 后端唯一约束（保证一致性）
+* RLS 权限控制（防止越权访问）
+
+👉 构建三层安全保障
+
+---
+
+## 🚀 快速启动
 
 ```bash
-git clone https://github.com/你的用户名/仓库名.git
-cd 仓库名
+git clone https://github.com/AnnaChen-coding/lash-booking-system.git
+cd lash-booking-system
 npm install
 npm run dev
+
+## 🎯 项目总结
+
+该项目不仅实现预约功能，还重点体现：
+
+* 前端数据流设计能力
+* 并发与状态一致性处理能力
+* 权限与安全设计能力
+* 工程化架构能力
+
+👉 是一个贴近真实业务的前端工程实践项目
+
