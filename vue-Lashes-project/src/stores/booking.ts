@@ -16,6 +16,8 @@ export const useBookingStore = defineStore('booking', () => {
   const bookings = ref<BookingItem[]>([])
   /** Supabase 匿名用户：仅缓存「某日已占时段」，不拉取完整预约（保护隐私） */
   const slotTakenByDate = reactive<Record<string, string[]>>({})
+  /** 避免同一日期并发重复请求 */
+  const loadingByDate = reactive<Record<string, Promise<void> | undefined>>({})
 
   // 加载所有预约
   const hydrateBookings = async () => {
@@ -28,14 +30,32 @@ export const useBookingStore = defineStore('booking', () => {
     bookings.value = await fetchBookings()
   }
   // 只加载某日的已占时段
-  const loadTakenSlotsForDate = async (date: string) => {
+  const loadTakenSlotsForDate = async (
+    date: string,
+    options?: { force?: boolean }
+  ) => {
     // 如果日期为空或未配置 Supabase，则直接返回
     if (!date || !isSupabaseConfigured()) return
     // 如果管理员，则直接返回
     if (useAuthStore().canAccessAdmin) return
+    // 已有缓存且非强制刷新，直接命中缓存
+    if (!options?.force && date in slotTakenByDate) return
+    // 同日期请求进行中则复用该请求，避免并发重复打后端
+    if (loadingByDate[date]) {
+      await loadingByDate[date]
+      return
+    }
     // 否则从 Supabase 拉取某日的已占时段
-    const times = await fetchBookedTimesForDate(date)
-    slotTakenByDate[date] = times
+    const task = (async () => {
+      const times = await fetchBookedTimesForDate(date)
+      slotTakenByDate[date] = times
+    })()
+    loadingByDate[date] = task
+    try {
+      await task
+    } finally {
+      delete loadingByDate[date]
+    }
   }
 
   // 检查某时段是否已被占用
@@ -65,6 +85,8 @@ export const useBookingStore = defineStore('booking', () => {
     await createBooking(newBooking)
     // 合并到已占时段缓存
     mergeSlotIntoCache(newBooking.date, newBooking.time)
+    // 提交成功后刷新该日期缓存，降低脏数据窗口
+    await loadTakenSlotsForDate(newBooking.date, { force: true })
     // 重新加载所有预约
     await hydrateBookings()
   }
@@ -95,6 +117,9 @@ export const useBookingStore = defineStore('booking', () => {
     // 清空已占时段缓存
     for (const k of Object.keys(slotTakenByDate)) {
       delete slotTakenByDate[k]
+    }
+    for (const k of Object.keys(loadingByDate)) {
+      delete loadingByDate[k]
     }
   }
 

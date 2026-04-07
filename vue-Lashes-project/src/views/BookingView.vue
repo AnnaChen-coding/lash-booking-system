@@ -47,7 +47,9 @@ const handleSubmitBooking = async (value: {
     alert('Please select a service, date, and time first.')
     return
   }
-// 冲突校验：检查在提交瞬间该时段是否被他人占用（双重保险）
+  // 冲突校验前强制刷新当前日期缓存，避免把本地缓存当成绝对真相
+  await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
+  // 冲突校验：检查在提交瞬间该时段是否被他人占用（双重保险）
   const alreadyBooked = bookingStore.isBooked(
     bookingData.value.date,
     bookingData.value.time
