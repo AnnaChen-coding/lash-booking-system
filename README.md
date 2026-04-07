@@ -1,129 +1,66 @@
-# 💅 Lash Booking System
+# 美睫店官网 · Vue 3
 
-A full-featured eyelash salon booking system built with Vue 3, simulating real-world business logic including service selection, scheduling, and admin management.
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs)](https://vuejs.org/)
+[![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite)](https://vitejs.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript)](https://www.typescriptlang.org/)
 
----
-
-## 🚀 Tech Stack
-
-* **Vue 3 + Vite**
-* **TypeScript**
-* **Pinia** (state management)
-* **Vue Router**
-* **localStorage** (data persistence)
-* **Day.js** (time handling)
+基于 **Vue 3 + TypeScript + Vite** 的美睫门店前端：**首页展示**、**服务浏览**、**在线预约**、**用户评价**，以及需登录的 **后台预约管理**（管理员白名单）。数据层支持 **Supabase**、自建 **REST API**，或未配置时使用浏览器 **localStorage** 演示。
 
 ---
 
-## ✨ Features
+## 目录
 
-### 👩‍💻 User Booking Flow
-
-* Service selection with category filtering
-* Time slot selection with availability control
-* Booking form with validation
-* Real-time price calculation
-* Persistent booking data (localStorage)
-
----
-
-### 🛠 Admin Dashboard
-
-* View all bookings
-* Filter bookings by status
-* Update booking status (pending / confirmed)
-* Delete bookings
+- [功能概览](#功能概览)
+- [技术栈](#技术栈)
+- [环境要求](#环境要求)
+- [快速开始](#快速开始)
+- [环境变量](#环境变量)
+- [Supabase 配置（推荐）](#supabase-配置推荐)
+- [通用 REST 后端](#通用-rest-后端)
+- [后台与登录](#后台与登录)
+- [路由一览](#路由一览)
+- [项目结构](#项目结构)
+- [开发建议](#开发建议)
+- [许可](#许可)
 
 ---
 
-### 🧠 Core Business Logic
+## 功能概览
 
-* **Time conflict detection** to prevent double booking
-* **Business hours restriction**
-* Unified booking data structure (UI → Store)
-* Reactive data flow using Pinia
+| 模块 | 说明 |
+|------|------|
+| **首页** `/` | 轮播、服务精选、评价、门店信息、行动号召（CTA） |
+| **服务** `/services` | 服务列表与筛选 |
+| **预约** `/booking` | 选择服务、日期与时段并提交预约 |
+| **登录** `/login` | 未配 Supabase 时为本地 Mock；配置后为 Supabase Auth 邮箱密码 |
+| **后台** `/admin` | 预约列表、筛选与统计；**仅 `admin_emails` 白名单邮箱**可访问 |
+
+**数据优先级**：配置了 `VITE_SUPABASE_*` 时走 Supabase → 否则若配置了 `VITE_API_BASE_URL` 走 REST → 否则使用 **localStorage** 本地演示。
 
 ---
 
-## 🏗 Project Structure
+## 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 框架 | Vue 3、Vue Router 5、Pinia |
+| 构建 | Vite 7 |
+| UI | Element Plus |
+| 质量 | TypeScript、ESLint、Oxlint、vue-tsc |
+| 后端（可选） | Supabase（`@supabase/supabase-js`）或自建 REST |
+
+---
+
+## 环境要求
+
+- **Node.js**：`^20.19.0` 或 `>=22.12.0`（见仓库根目录 `package.json` 的 `engines`）
+
+---
+
+## 快速开始
 
 ```bash
-src/
-├── components/
-│   ├── booking/        # Booking flow components
-│   ├── admin/          # Admin dashboard components
-│   ├── home/           # Homepage UI components
-│   ├── services/       # Service listing & filtering
-│   └── TheNavbar.vue
-│
-├── views/
-│   ├── HomeView.vue
-│   ├── BookingView.vue
-│   ├── ServicesView.vue
-│   └── AdminView.vue
-│
-├── stores/
-│   └── booking.ts      # Global booking state (Pinia)
-│
-├── utils/
-│   └── booking.ts      # Business logic (conflict detection)
-│
-├── data/               # Mock data (services, time slots, etc.)
-├── types/              # TypeScript interfaces
-├── router/             # Route configuration
-└── main.ts
-```
-
----
-
-## 🔄 Data Flow (Core Design)
-
-1. UI components collect user input (service, date, time)
-2. Data is transformed into a unified booking format
-3. Stored in **Pinia store**
-4. Synced to **localStorage**
-5. Admin panel reads from the same store
-
-👉 Ensures a **single source of truth** and consistent state across the app
-
----
-
-## 🌟 Highlights
-
-* Designed a **modular component architecture** (booking / admin / home separation)
-* Implemented **state-driven UI updates** using Pinia
-* Built **real-world scheduling logic** (time conflict detection)
-* Structured project with **clear separation of concerns** (components / stores / utils / types)
-* Strong focus on **data flow and maintainability**
-
----
-
-## 📦 Installation
-
-```bash
+git clone https://github.com/你的用户名/仓库名.git
+cd 仓库名
 npm install
 npm run dev
-```
-
----
-
-## 📸 Screenshots
-
-<img width="1427" height="708" alt="Screenshot 2026-04-01 at 11 49 23" src="https://github.com/user-attachments/assets/f162adb1-2608-444b-8687-36783894c570" /><img width="872" height="603" alt="Screenshot 2026-04-01 at 11 49 34" src="https://github.com/user-attachments/assets/b1d1d449-0127-42c8-a5f4-9f94877eabaf" /><img width="1297" height="685" alt="Screenshot 2026-04-01 at 11 50 12" src="https://github.com/user-attachments/assets/96adf438-5544-4f14-8a00-94358dbe222d" /><img width="1272" height="706" alt="Screenshot 2026-04-01 at 11 50 21" src="https://github.com/user-attachments/assets/a2e2e5a7-27db-45be-9cab-6be1704f4ea4" /><img width="1105" height="679" alt="Screenshot 2026-04-01 at 11 50 31" src="https://github.com/user-attachments/assets/261d22a6-be9f-4ff3-9071-21445e741e52" /><img width="1017" height="581" alt="Screenshot 2026-04-01 at 11 50 39" src="https://github.com/user-attachments/assets/321f946b-95b9-49a6-a744-946170e6c1a9" /><img width="1037" height="584" alt="Screenshot 2026-04-01 at 11 51 00" src="https://github.com/user-attachments/assets/6e78aec3-9506-469c-8c0c-87f126eb0bc7" />
-
-
-
-
-
-
-
----
-
-## 🚧 Future Improvements
-
-* Multi-step booking flow (step form)
-* Backend integration (replace localStorage with API)
-* User authentication system
-* Mobile responsiveness & animation optimization
-
----
