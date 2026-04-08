@@ -79,16 +79,24 @@ export const useBookingStore = defineStore('booking', () => {
     // 否则将该时段添加到已占时段缓存
     slotTakenByDate[date] = [...cur, time].sort()
   }
+  /** 支付页展示用：上一笔刚提交的预约（匿名用户无全表列表时也够用） */
+  const lastPaymentBooking = ref<BookingItem | null>(null)
+
+  const setLastPaymentBooking = (row: BookingItem | null) => {
+    lastPaymentBooking.value = row
+  }
+
   // 添加预约
   const addBooking = async (newBooking: BookingItem) => {
     // 调用 Supabase 添加预约
-    await createBooking(newBooking)
+    const created = await createBooking(newBooking)
     // 合并到已占时段缓存
-    mergeSlotIntoCache(newBooking.date, newBooking.time)
+    mergeSlotIntoCache(created.date, created.time)
     // 提交成功后刷新该日期缓存，降低脏数据窗口
-    await loadTakenSlotsForDate(newBooking.date, { force: true })
+    await loadTakenSlotsForDate(created.date, { force: true })
     // 重新加载所有预约
     await hydrateBookings()
+    return created
   }
 
   // 删除预约
@@ -100,10 +108,7 @@ export const useBookingStore = defineStore('booking', () => {
   }
 
   // 更新预约状态
-  const updateStatus = async (
-    id: number,
-    status: 'pending' | 'confirmed' | 'cancelled'
-  ) => {
+  const updateStatus = async (id: number, status: BookingItem['status']) => {
     // 调用 Supabase 更新预约状态
     await patchBookingStatus(id, status)
     // 重新加载所有预约
@@ -112,6 +117,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   // 登出时清空所有数据
   function clearAfterLogout() {
+    lastPaymentBooking.value = null
     // 清空 bookings
     bookings.value = []
     // 清空已占时段缓存
@@ -125,6 +131,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   return {
     bookings,
+    lastPaymentBooking,
     slotTakenByDate,
     hydrateBookings,
     loadTakenSlotsForDate,
@@ -132,6 +139,7 @@ export const useBookingStore = defineStore('booking', () => {
     addBooking,
     removeBooking,
     updateStatus,
+    setLastPaymentBooking,
     clearAfterLogout,
   }
 })

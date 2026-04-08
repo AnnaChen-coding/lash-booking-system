@@ -11,6 +11,16 @@ const pendingBookings = computed(() => {
   return bookingStore.bookings.filter(booking => booking.status === 'pending').length
 })
 
+const pendingPaymentBookings = computed(() => {
+  return bookingStore.bookings.filter(
+    booking => booking.status === 'pending_payment'
+  ).length
+})
+
+const paidBookings = computed(() => {
+  return bookingStore.bookings.filter(booking => booking.status === 'paid').length
+})
+
 const confirmedBookings = computed(() => {
   return bookingStore.bookings.filter(booking => booking.status === 'confirmed').length
 })
@@ -33,6 +43,16 @@ const cancelledBookings = computed(() => {
     </div>
 
     <div class="stat-card">
+      <p class="stat-label">Pending payment</p>
+      <h3 class="stat-value">{{ pendingPaymentBookings }}</h3>
+    </div>
+
+    <div class="stat-card">
+      <p class="stat-label">Paid</p>
+      <h3 class="stat-value">{{ paidBookings }}</h3>
+    </div>
+
+    <div class="stat-card">
       <p class="stat-label">Confirmed</p>
       <h3 class="stat-value">{{ confirmedBookings }}</h3>
     </div>
@@ -47,7 +67,7 @@ const cancelledBookings = computed(() => {
 <style scoped>
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }

@@ -11,7 +11,13 @@ create table if not exists public.bookings (
   notes text not null default '',
   status text not null default 'pending',
   constraint bookings_status_check check (
-    status in ('pending', 'confirmed', 'cancelled')
+    status in (
+      'pending',
+      'confirmed',
+      'cancelled',
+      'pending_payment',
+      'paid'
+    )
   )
 );
 
@@ -142,3 +148,62 @@ create policy "reviews_insert_public"
   on public.reviews for insert
   to anon, authenticated
   with check (true);
+
+-- 匿名插入预约并返回自增 id（支付流程依赖真实 orderId；直连 insert 无法 select）
+create or replace function public.insert_booking_anon(
+  p_name text,
+  p_phone text,
+  p_service text,
+  p_date text,
+  p_time text,
+  p_notes text,
+  p_status text
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id integer;
+begin
+  insert into public.bookings (name, phone, service, date, time, notes, status)
+  values (
+    p_name,
+    p_phone,
+    p_service,
+    p_date,
+    p_time,
+    coalesce(p_notes, ''),
+    p_status
+  )
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+revoke all on function public.insert_booking_anon(
+  text, text, text, text, text, text, text
+) from public;
+grant execute on function public.insert_booking_anon(
+  text, text, text, text, text, text, text
+) to anon, authenticated;
+
+-- 模拟支付异步通知：仅允许 pending_payment -> paid（anonymous 无表 UPDATE 权限）
+create or replace function public.confirm_booking_payment_simulation(p_id integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.bookings
+  set status = 'paid'
+  where id = p_id
+    and status = 'pending_payment';
+end;
+$$;
+
+revoke all on function public.confirm_booking_payment_simulation(integer) from public;
+grant execute on function public.confirm_booking_payment_simulation(integer)
+  to anon, authenticated;

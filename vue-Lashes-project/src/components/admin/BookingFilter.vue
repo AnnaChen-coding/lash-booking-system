@@ -41,12 +41,27 @@ const handleChange = (value: string) => {
     >
       Cancelled
     </button>
+
+    <button
+      :class="{ active: props.modelValue === 'pending_payment' }"
+      @click="handleChange('pending_payment')"
+    >
+      Pending pay
+    </button>
+
+    <button
+      :class="{ active: props.modelValue === 'paid' }"
+      @click="handleChange('paid')"
+    >
+      Paid
+    </button>
   </div>
 </template>
 
 <style scoped>
 .filter-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 20px;
 }

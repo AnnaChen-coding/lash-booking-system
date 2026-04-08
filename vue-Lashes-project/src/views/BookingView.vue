@@ -4,7 +4,7 @@ import TimePicker from '@/components/booking/TimePicker.vue'
 import BookingForm from '@/components/booking/BookingForm.vue'
 import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
 
 // --- 统一的状态管理 ---
@@ -19,6 +19,7 @@ const bookingData = ref<BookingFormData>({
 })
 
 const route = useRoute()
+const router = useRouter()
 
 const bookingStore = useBookingStore()
 
@@ -61,7 +62,7 @@ const handleSubmitBooking = async (value: {
   }
 // 调用 API 层（经 Store）执行保存操作
   try {
-    await bookingStore.addBooking({
+    const created = await bookingStore.addBooking({
       id: Date.now(),
       name: bookingData.value.name,
       phone: bookingData.value.phone,
@@ -69,8 +70,25 @@ const handleSubmitBooking = async (value: {
       date: bookingData.value.date,
       time: bookingData.value.time,
       notes: bookingData.value.notes,
-      status: 'pending',
+      status: 'pending_payment',
     })
+    if (created.status === 'pending_payment') {
+      bookingStore.setLastPaymentBooking(created)
+      await router.push({
+        name: 'bookingPay',
+        params: { id: String(created.id) },
+      })
+    } else {
+      bookingStore.setLastPaymentBooking(created)
+      alert(
+        '预约已提交。当前数据库尚未支持「待支付」状态，以下将进入前端模拟支付页（不回写数据库）。完整支付模拟请在 Supabase 执行 supabase/migration_payment_flow.sql。'
+      )
+      await router.push({
+        name: 'bookingPay',
+        params: { id: String(created.id) },
+        query: { mock: '1' },
+      })
+    }
   } catch (e) {
     alert(e instanceof Error ? e.message : '预约提交失败，请稍后重试')
   }

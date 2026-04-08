@@ -39,16 +39,26 @@ function toId(value: unknown): number {
   throw new Error('Invalid id from database')
 }
 
+const BOOKING_STATUSES: readonly BookingItem['status'][] = [
+  'pending',
+  'confirmed',
+  'cancelled',
+  'pending_payment',
+  'paid',
+] as const
+
+function isBookingStatus(v: unknown): v is BookingItem['status'] {
+  return (
+    typeof v === 'string' &&
+    (BOOKING_STATUSES as readonly string[]).includes(v)
+  )
+}
+
 // 将数据库行转换为 BookingItem
 function rowToBooking(row: Record<string, unknown>): BookingItem {
   // 获取状态
   const status = row.status
-  // 如果状态不是 pending、confirmed 或 cancelled，则抛出错误
-  if (
-    status !== 'pending' &&
-    status !== 'confirmed' &&
-    status !== 'cancelled'
-  ) {
+  if (!isBookingStatus(status)) {
     throw new Error('Invalid booking status from database')
   }
   // 将数据库行转换为 BookingItem
@@ -79,6 +89,16 @@ function isUniqueViolation(err: unknown): boolean {
     err !== null &&
     'code' in err &&
     (err as { code: string }).code === '23505'
+  )
+}
+
+/** 旧库 bookings_status_check 不包含 pending_payment / paid 时会触发 */
+function isCheckViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: string }).code === '23514'
   )
 }
 
@@ -200,21 +220,78 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
       // 将数据转换为 BookingItem
       return rowToBooking(data as Record<string, unknown>)
     }
-    // 非管理员
-    const { error } = await sb
-    // 指定表名
-    .from('bookings')
-    // 插入 payload
-    .insert(payload)
-    // 如果插入失败，则抛出错误
-    if (error) {
-      // 如果错误是唯一约束冲突，则抛出错误
-      if (isUniqueViolation(error)) {
+    // 非管理员：优先 RPC 插入并返回真实 id；无 RPC 时回退为直连 insert（与旧版一致，支付页 id 可能不准确）
+    const { data: newId, error: rpcErr } = await sb.rpc('insert_booking_anon', {
+      p_name: payload.name,
+      p_phone: payload.phone,
+      p_service: payload.service,
+      p_date: payload.date,
+      p_time: payload.time,
+      p_notes: payload.notes ?? '',
+      p_status: payload.status,
+    })
+    if (rpcErr) {
+      const rpcMissing =
+        rpcErr.code === 'PGRST202' ||
+        String(rpcErr.message ?? '').includes('insert_booking_anon')
+      if (rpcMissing) {
+        const insertWithStatus = (status: BookingItem['status']) =>
+          sb.from('bookings').insert({ ...payload, status })
+
+        let { error: insErr } = await insertWithStatus(item.status)
+        if (insErr) {
+          if (isUniqueViolation(insErr)) {
+            throw new Error('该时段刚刚已被预约，请另选时间')
+          }
+          const msg = String((insErr as { message?: string }).message ?? '')
+          const statusRejected =
+            isCheckViolation(insErr) ||
+            msg.includes('bookings_status_check') ||
+            msg.includes('violates check constraint')
+          if (item.status === 'pending_payment' && statusRejected) {
+            const { error: e2 } = await insertWithStatus('pending')
+            if (e2) {
+              if (isUniqueViolation(e2)) {
+                throw new Error('该时段刚刚已被预约，请另选时间')
+              }
+              throw e2
+            }
+            return { ...item, status: 'pending' }
+          }
+          throw insErr
+        }
+        return item
+      }
+      if (isUniqueViolation(rpcErr)) {
         throw new Error('该时段刚刚已被预约，请另选时间')
       }
-      throw error
+      const rpcMsg = String(rpcErr.message ?? '')
+      if (
+        item.status === 'pending_payment' &&
+        (rpcMsg.includes('check constraint') ||
+          rpcMsg.includes('bookings_status_check') ||
+          rpcMsg.includes('23514'))
+      ) {
+        const { error: e2 } = await sb
+          .from('bookings')
+          .insert({ ...payload, status: 'pending' })
+        if (e2) {
+          if (isUniqueViolation(e2)) {
+            throw new Error('该时段刚刚已被预约，请另选时间')
+          }
+          throw e2
+        }
+        return { ...item, status: 'pending' }
+      }
+      throw rpcErr
     }
-    return item
+    const id = typeof newId === 'number' ? newId : Number(newId)
+    if (!Number.isFinite(id)) {
+      throw new Error(
+        '预约已提交但无法解析订单号。请确认已在 Supabase 执行 supabase/migration_payment_flow.sql'
+      )
+    }
+    return { ...item, id }
   }
   // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {

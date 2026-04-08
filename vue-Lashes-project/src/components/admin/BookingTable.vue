@@ -13,10 +13,7 @@ const props = defineProps<{
 
 const handleStatusChange = (id: number, event: Event) => {
   const target = event.target as HTMLSelectElement
-  void bookingStore.updateStatus(
-    id,
-    target.value as 'pending' | 'confirmed' | 'cancelled'
-  )
+  void bookingStore.updateStatus(id, target.value as BookingItem['status'])
 }
 </script>
 
@@ -43,6 +40,8 @@ const handleStatusChange = (id: number, event: Event) => {
           @change="handleStatusChange(booking.id, $event)"
         >
           <option value="pending">Pending</option>
+          <option value="pending_payment">Pending payment</option>
+          <option value="paid">Paid</option>
           <option value="confirmed">Confirmed</option>
           <option value="cancelled">Cancelled</option>
         </select>

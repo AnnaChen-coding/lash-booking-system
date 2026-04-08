@@ -6,6 +6,8 @@ import {
 import HomeView from '../views/HomeView.vue'
 import ServicesView from '../views/ServicesView.vue'
 import BookingView from '../views/BookingView.vue'
+import BookingPaymentView from '../views/BookingPaymentView.vue'
+import BookingPaymentResultView from '../views/BookingPaymentResultView.vue'
 import AdminView from '../views/AdminView.vue'
 import LoginView from '../views/LoginView.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -25,6 +27,16 @@ const routes = [
     path: '/booking',
     name: 'booking',
     component: BookingView,
+  },
+  {
+    path: '/booking/pay/:id',
+    name: 'bookingPay',
+    component: BookingPaymentView,
+  },
+  {
+    path: '/booking/pay/:id/result',
+    name: 'bookingPayResult',
+    component: BookingPaymentResultView,
   },
   {
     path: '/login',

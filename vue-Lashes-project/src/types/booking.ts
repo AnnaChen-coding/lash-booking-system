@@ -6,7 +6,12 @@ export interface BookingItem {
   date: string
   time: string
   notes: string
-  status: 'pending' | 'confirmed' | 'cancelled'
+  status:
+    | 'pending'
+    | 'confirmed'
+    | 'cancelled'
+    | 'pending_payment'
+    | 'paid'
 }
 
 export interface BookingFormData {
