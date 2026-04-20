@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -15,22 +15,71 @@ const bookingStore = useBookingStore()
 const auth = useAuthStore()
 // 存储用户选中的日期
 const selectedDate = ref('')
+const selectedTime = ref('')
+const isRefreshing = ref(false)
+const lastRefreshedAt = ref<Date | null>(null)
+const AUTO_REFRESH_MS = 15000
+let timerId: number | null = null
+
+const lastRefreshedText = computed(() => {
+  if (!lastRefreshedAt.value) return '等待获取可约时段...'
+  return `最新时段刷新：${lastRefreshedAt.value.toLocaleTimeString()}`
+})
+
+const canRefreshTakenSlots = () =>
+  Boolean(selectedDate.value) && isSupabaseConfigured() && !auth.canAccessAdmin
+
+const refreshSlotsForSelectedDate = async (force = false) => {
+  if (!canRefreshTakenSlots() || !selectedDate.value) return
+  isRefreshing.value = true
+  try {
+    await bookingStore.loadTakenSlotsForDate(selectedDate.value, { force })
+    if (
+      selectedTime.value &&
+      bookingStore.isBooked(selectedDate.value, selectedTime.value)
+    ) {
+      selectedTime.value = ''
+      emit('select-time', { date: selectedDate.value, time: '' })
+    }
+    lastRefreshedAt.value = new Date()
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
+const startAutoRefresh = () => {
+  if (timerId !== null) return
+  timerId = window.setInterval(() => {
+    void refreshSlotsForSelectedDate(true)
+  }, AUTO_REFRESH_MS)
+}
+
+const stopAutoRefresh = () => {
+  if (timerId === null) return
+  window.clearInterval(timerId)
+  timerId = null
+}
+
 // 监听用户选中的日期，如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
 watch(
   // 监听 selectedDate.value 的变化
   () => selectedDate.value,
 
-  (d) => {
+  (d, oldDate) => {
+    if (d !== oldDate) {
+      selectedTime.value = ''
+      if (d) {
+        emit('select-time', { date: d, time: '' })
+      }
+    }
     // 如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
     if (!d || !isSupabaseConfigured() || auth.canAccessAdmin) return
     // 否则调用 Store 的方法，加载已占时段
-    void bookingStore.loadTakenSlotsForDate(d)
+    void refreshSlotsForSelectedDate(true)
   },
   // 立即执行
   { immediate: true }
 )
-// 存储用户选中的时间段
-const selectedTime = ref('')
 // --- 逻辑处理 ---
 const handleSelectTime = (time: string) => {
   // 如果还没选日期，不允许选时间
@@ -43,6 +92,14 @@ const handleSelectTime = (time: string) => {
     time,
   })
 }
+
+onMounted(() => {
+  startAutoRefresh()
+})
+
+onBeforeUnmount(() => {
+  stopAutoRefresh()
+})
 </script>
 
 <template>
@@ -62,6 +119,9 @@ const handleSelectTime = (time: string) => {
 
     <div v-if="selectedDate" class="slots-wrapper">
       <p class="slot-title">Available Time Slots</p>
+      <p class="slot-hint">
+        {{ isRefreshing ? '实时刷新中...' : lastRefreshedText }}
+      </p>
 
       <div class="time-slots">
          <!-- 1. 高亮：当前选中的时间  -->
@@ -165,6 +225,12 @@ const handleSelectTime = (time: string) => {
   font-size: 15px;
   font-weight: 600;
   color: var(--color-text);
+}
+
+.slot-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  color: var(--color-text-soft);
 }
 
 .time-slots {

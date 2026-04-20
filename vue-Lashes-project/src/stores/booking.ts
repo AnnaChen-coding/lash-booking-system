@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import type { BookingItem } from '@/types/booking'
+import { timeSlots } from '@/data/timeSlots'
 import {
   createBooking,
   deleteBooking,
@@ -66,6 +67,30 @@ export const useBookingStore = defineStore('booking', () => {
     }
     // 否则检查 bookings
     return isTimeSlotBooked(bookings.value, date, time)
+  }
+
+  const recommendAvailableSlots = (
+    date: string,
+    preferredTime: string,
+    limit = 3
+  ): string[] => {
+    if (!date) return []
+    const available = timeSlots.filter((slot) => !isBooked(date, slot))
+    if (!available.length) return []
+
+    const preferredIndex = timeSlots.indexOf(preferredTime)
+    if (preferredIndex < 0) {
+      return available.slice(0, limit)
+    }
+
+    return [...available]
+      .sort((a, b) => {
+        const aDistance = Math.abs(timeSlots.indexOf(a) - preferredIndex)
+        const bDistance = Math.abs(timeSlots.indexOf(b) - preferredIndex)
+        if (aDistance !== bDistance) return aDistance - bDistance
+        return timeSlots.indexOf(a) - timeSlots.indexOf(b)
+      })
+      .slice(0, limit)
   }
 
   // 合并到已占时段缓存
@@ -136,6 +161,7 @@ export const useBookingStore = defineStore('booking', () => {
     hydrateBookings,
     loadTakenSlotsForDate,
     isBooked,
+    recommendAvailableSlots,
     addBooking,
     removeBooking,
     updateStatus,

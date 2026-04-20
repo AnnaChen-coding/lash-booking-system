@@ -23,6 +23,14 @@ const router = useRouter()
 
 const bookingStore = useBookingStore()
 
+const buildConflictMessage = (date: string, time: string) => {
+  const suggestions = bookingStore.recommendAvailableSlots(date, time, 3)
+  if (!suggestions.length) {
+    return '该时段刚被预约，当前日期已无可用时段，请切换日期后重试。'
+  }
+  return `该时段刚被预约，建议改约：${suggestions.join(' / ')}`
+}
+
 // --- 回调处理 ---
 // 处理时间选择组件传回的 date 和 time
 const handleTimeSelect = (value: { date: string; time: string }) => {
@@ -57,7 +65,9 @@ const handleSubmitBooking = async (value: {
   )
 
   if (alreadyBooked) {
-    alert('This time slot is already booked.')
+    const selectedTime = bookingData.value.time
+    bookingData.value.time = ''
+    alert(buildConflictMessage(bookingData.value.date, selectedTime))
     return
   }
 // 调用 API 层（经 Store）执行保存操作
@@ -90,7 +100,17 @@ const handleSubmitBooking = async (value: {
       })
     }
   } catch (e) {
-    alert(e instanceof Error ? e.message : '预约提交失败，请稍后重试')
+    const message = e instanceof Error ? e.message : '预约提交失败，请稍后重试'
+    const isConflict = /已被预约|already booked|另选时间/i.test(message)
+    if (isConflict) {
+      const selectedTime = bookingData.value.time
+      await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
+      const latestMessage = buildConflictMessage(bookingData.value.date, selectedTime)
+      bookingData.value.time = ''
+      alert(latestMessage)
+      return
+    }
+    alert(message)
   }
 }
 onMounted(() => {

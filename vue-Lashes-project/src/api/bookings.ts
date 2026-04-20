@@ -238,7 +238,7 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
         const insertWithStatus = (status: BookingItem['status']) =>
           sb.from('bookings').insert({ ...payload, status })
 
-        let { error: insErr } = await insertWithStatus(item.status)
+        const { error: insErr } = await insertWithStatus(item.status)
         if (insErr) {
           if (isUniqueViolation(insErr)) {
             throw new Error('该时段刚刚已被预约，请另选时间')
