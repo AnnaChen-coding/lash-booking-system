@@ -5,6 +5,11 @@ import { useBookingStore } from '@/stores/booking'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 
+const props = defineProps<{
+  /** 当前所选服务名（与 `services` 一致），用于按线路/技师数算可约时段 */
+  service: string
+}>()
+
 // --- 事件定义 ---
 const emit = defineEmits<{
   (e: 'select-time', value: { date: string; time: string }): void
@@ -36,7 +41,11 @@ const refreshSlotsForSelectedDate = async (force = false) => {
     await bookingStore.loadTakenSlotsForDate(selectedDate.value, { force })
     if (
       selectedTime.value &&
-      bookingStore.isBooked(selectedDate.value, selectedTime.value)
+      bookingStore.isBooked(
+        selectedDate.value,
+        selectedTime.value,
+        props.service
+      )
     ) {
       selectedTime.value = ''
       emit('select-time', { date: selectedDate.value, time: '' })
@@ -79,6 +88,25 @@ watch(
   },
   // 立即执行
   { immediate: true }
+)
+
+watch(
+  () => props.service,
+  () => {
+    if (
+      !selectedDate.value ||
+      !selectedTime.value ||
+      !bookingStore.isBooked(
+        selectedDate.value,
+        selectedTime.value,
+        props.service
+      )
+    ) {
+      return
+    }
+    selectedTime.value = ''
+    emit('select-time', { date: selectedDate.value, time: '' })
+  }
 )
 // --- 逻辑处理 ---
 const handleSelectTime = (time: string) => {
@@ -139,11 +167,11 @@ onBeforeUnmount(() => {
           :key="time"
           class="time-btn"
           :class="{ selected: selectedTime === time }"
-          :disabled="bookingStore.isBooked(selectedDate, time)"
+          :disabled="bookingStore.isBooked(selectedDate, time, service)"
           round
           @click="handleSelectTime(time)"
         >
-          <span v-if="bookingStore.isBooked(selectedDate, time)">Booked</span>
+          <span v-if="bookingStore.isBooked(selectedDate, time, service)">Booked</span>
           <span v-else>{{ time }}</span>
         </el-button>
       </div>

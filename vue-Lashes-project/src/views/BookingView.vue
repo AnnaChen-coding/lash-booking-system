@@ -26,7 +26,12 @@ const router = useRouter()
 const bookingStore = useBookingStore()
 
 const buildConflictMessage = (date: string, time: string) => {
-  const suggestions = bookingStore.recommendAvailableSlots(date, time, 3)
+  const suggestions = bookingStore.recommendAvailableSlots(
+    date,
+    time,
+    3,
+    bookingData.value.service
+  )
   if (!suggestions.length) {
     return 'This slot was just booked. No more slots are available on this date. Please choose another date.'
   }
@@ -65,7 +70,8 @@ const handleSubmitBooking = async (value: {
   // 冲突校验：检查在提交瞬间该时段是否被他人占用（双重保险）
   const alreadyBooked = bookingStore.isBooked(
     bookingData.value.date,
-    bookingData.value.time
+    bookingData.value.time,
+    bookingData.value.service
   )
 
   if (alreadyBooked) {
@@ -164,7 +170,10 @@ onMounted(() => {
         </div>
 
         <div class="section-block">
-          <TimePicker @select-time="handleTimeSelect" />
+          <TimePicker
+            :service="bookingData.service"
+            @select-time="handleTimeSelect"
+          />
         </div>
 
         <el-card

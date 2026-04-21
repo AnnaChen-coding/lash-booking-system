@@ -5,18 +5,23 @@ import { timeSlots } from '@/data/timeSlots'
 import {
   createBooking,
   deleteBooking,
-  fetchBookedTimesForDate,
   fetchBookings,
+  fetchScheduleBlocksForDate,
   patchBookingStatus,
 } from '@/api/bookings'
-import { isTimeSlotBooked } from '@/utils/booking'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
+import {
+  bookingToPublicBlock,
+  bookingsToBlocks,
+  isStartUnavailableForService,
+} from '@/utils/scheduleAvailability'
+import type { PublicBookingBlock } from '@/types/schedule'
 
 export const useBookingStore = defineStore('booking', () => {
   const bookings = ref<BookingItem[]>([])
-  /** Supabase 匿名用户：仅缓存「某日已占时段」，不拉取完整预约（保护隐私） */
-  const slotTakenByDate = reactive<Record<string, string[]>>({})
+  /** Supabase 匿名：某日已占区间（线路 / 开始时间 / 块长），不暴露客户信息 */
+  const scheduleBlocksByDate = reactive<Record<string, PublicBookingBlock[]>>({})
   /** 避免同一日期并发重复请求 */
   const loadingByDate = reactive<Record<string, Promise<void> | undefined>>({})
 
@@ -40,7 +45,7 @@ export const useBookingStore = defineStore('booking', () => {
     // 如果管理员，则直接返回
     if (useAuthStore().canAccessAdmin) return
     // 已有缓存且非强制刷新，直接命中缓存
-    if (!options?.force && date in slotTakenByDate) return
+    if (!options?.force && date in scheduleBlocksByDate) return
     // 同日期请求进行中则复用该请求，避免并发重复打后端
     if (loadingByDate[date]) {
       await loadingByDate[date]
@@ -48,8 +53,8 @@ export const useBookingStore = defineStore('booking', () => {
     }
     // 否则从 Supabase 拉取某日的已占时段
     const task = (async () => {
-      const times = await fetchBookedTimesForDate(date)
-      slotTakenByDate[date] = times
+      const blocks = await fetchScheduleBlocksForDate(date)
+      scheduleBlocksByDate[date] = blocks
     })()
     loadingByDate[date] = task
     try {
@@ -59,23 +64,33 @@ export const useBookingStore = defineStore('booking', () => {
     }
   }
 
-  // 检查某时段是否已被占用
-  const isBooked = (date: string, time: string) => {
-    // 如果配置了 Supabase 并且不是管理员，则检查 slotTakenByDate
+  /** 某开始时段对当前所选服务是否不可约（技师数 + 时长 + 缓冲） */
+  const isBooked = (date: string, time: string, service?: string) => {
+    if (!service) return false
+
     if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
-      return slotTakenByDate[date]?.includes(time) ?? false
+      const blocks = scheduleBlocksByDate[date] ?? []
+      return isStartUnavailableForService(blocks, service, time)
     }
-    // 否则检查 bookings
-    return isTimeSlotBooked(bookings.value, date, time)
+
+    const dayBookings = bookings.value.filter(
+      (b) => b.date === date && b.status !== 'cancelled'
+    )
+    return isStartUnavailableForService(
+      bookingsToBlocks(dayBookings),
+      service,
+      time
+    )
   }
 
   const recommendAvailableSlots = (
     date: string,
     preferredTime: string,
-    limit = 3
+    limit = 3,
+    service?: string
   ): string[] => {
     if (!date) return []
-    const available = timeSlots.filter((slot) => !isBooked(date, slot))
+    const available = timeSlots.filter((slot) => !isBooked(date, slot, service))
     if (!available.length) return []
 
     const preferredIndex = timeSlots.indexOf(preferredTime)
@@ -93,16 +108,15 @@ export const useBookingStore = defineStore('booking', () => {
       .slice(0, limit)
   }
 
-  // 合并到已占时段缓存
-  const mergeSlotIntoCache = (date: string, time: string) => {
-    // 如果未配置 Supabase 或管理员，则直接返回
+  const mergeBlockIntoCache = (booking: BookingItem) => {
     if (!isSupabaseConfigured() || useAuthStore().canAccessAdmin) return
-    // 否则检查已占时段缓存
-    const cur = slotTakenByDate[date] ?? []
-    // 如果已占时段缓存中已包含该时段，则直接返回
-    if (cur.includes(time)) return
-    // 否则将该时段添加到已占时段缓存
-    slotTakenByDate[date] = [...cur, time].sort()
+    if (booking.status === 'cancelled') return
+    const block = bookingToPublicBlock(booking)
+    if (!block) return
+    const cur = scheduleBlocksByDate[booking.date] ?? []
+    scheduleBlocksByDate[booking.date] = [...cur, block].sort((a, b) =>
+      a.time.localeCompare(b.time)
+    )
   }
   /** 支付页展示用：上一笔刚提交的预约（匿名用户无全表列表时也够用） */
   const lastPaymentBooking = ref<BookingItem | null>(null)
@@ -116,7 +130,7 @@ export const useBookingStore = defineStore('booking', () => {
     // 调用 Supabase 添加预约
     const created = await createBooking(newBooking)
     // 合并到已占时段缓存
-    mergeSlotIntoCache(created.date, created.time)
+    mergeBlockIntoCache(created)
     // 提交成功后刷新该日期缓存，降低脏数据窗口
     await loadTakenSlotsForDate(created.date, { force: true })
     // 重新加载所有预约
@@ -146,8 +160,8 @@ export const useBookingStore = defineStore('booking', () => {
     // 清空 bookings
     bookings.value = []
     // 清空已占时段缓存
-    for (const k of Object.keys(slotTakenByDate)) {
-      delete slotTakenByDate[k]
+    for (const k of Object.keys(scheduleBlocksByDate)) {
+      delete scheduleBlocksByDate[k]
     }
     for (const k of Object.keys(loadingByDate)) {
       delete loadingByDate[k]
@@ -157,7 +171,7 @@ export const useBookingStore = defineStore('booking', () => {
   return {
     bookings,
     lastPaymentBooking,
-    slotTakenByDate,
+    scheduleBlocksByDate,
     hydrateBookings,
     loadTakenSlotsForDate,
     isBooked,

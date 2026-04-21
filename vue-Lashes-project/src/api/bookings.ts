@@ -1,6 +1,9 @@
 import type { BookingItem } from '@/types/booking'
+import type { ScheduleLine } from '@/data/scheduleConfig'
+import type { PublicBookingBlock } from '@/types/schedule'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import { isRemoteApi, request } from './client'
+import { bookingsToBlocks, legacyBookedTimesToBlocks } from '@/utils/scheduleAvailability'
 
 // 本地存储的键名
 const STORAGE_KEY = 'bookings'
@@ -124,6 +127,63 @@ export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
   // 如果 data 是数组，则返回 data 转换为 string[]
   // 否则返回空数组
   return Array.isArray(data) ? (data as string[]) : []
+}
+
+function parsePublicBookingBlocks(data: unknown): PublicBookingBlock[] {
+  if (!Array.isArray(data)) return []
+  const out: PublicBookingBlock[] = []
+  for (const row of data) {
+    if (typeof row !== 'object' || row === null) continue
+    const r = row as Record<string, unknown>
+    const line = r.line
+    const time = r.time
+    const blockMinutes = r.blockMinutes
+    if (line !== 'nails' && line !== 'lashes') continue
+    if (typeof time !== 'string') continue
+    const bm =
+      typeof blockMinutes === 'number'
+        ? blockMinutes
+        : Number(blockMinutes)
+    if (!Number.isFinite(bm)) continue
+    out.push({ line: line as ScheduleLine, time, blockMinutes: bm })
+  }
+  return out
+}
+
+/** 某日已占用区间（匿名可拉取），用于按技师数 + 时长 + 缓冲算可约时段 */
+export async function fetchScheduleBlocksForDate(
+  date: string
+): Promise<PublicBookingBlock[]> {
+  if (!date) return []
+
+  if (isSupabaseConfigured()) {
+    const sb = getSupabase()
+    const { data, error } = await sb.rpc('get_public_booking_blocks_for_date', {
+      p_date: date,
+    })
+    if (!error) {
+      return parsePublicBookingBlocks(data)
+    }
+    const rpcMissing =
+      error.code === 'PGRST202' ||
+      String(error.message ?? '').includes('get_public_booking_blocks_for_date')
+    if (rpcMissing) {
+      const times = await fetchBookedTimesForDate(date)
+      return legacyBookedTimesToBlocks(times)
+    }
+    throw error
+  }
+
+  if (isRemoteApi()) {
+    const rows = await fetchBookings()
+    return bookingsToBlocks(
+      rows.filter((b) => b.date === date && b.status !== 'cancelled')
+    )
+  }
+
+  return bookingsToBlocks(
+    readLocal().filter((b) => b.date === date && b.status !== 'cancelled')
+  )
 }
 
 /**

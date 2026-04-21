@@ -41,10 +41,8 @@ grant select, insert, update, delete on public.admin_emails to service_role;
 -- 执行完本脚本后务必插入你自己的管理员邮箱，例如：
 -- insert into public.admin_emails (email) values ('you@example.com');
 
--- 同一日期+时段仅允许一条「未取消」预约（防并发重复插入）
-create unique index if not exists bookings_one_active_per_slot
-  on public.bookings (date, time)
-  where status <> 'cancelled';
+-- 容量与区间重叠由 insert_booking_anon（见下）校验；不再对 (date, time) 建全局唯一索引。
+-- 若从旧库升级，请执行 supabase/migration_schedule_model.sql 以删除旧索引并更新 RPC。
 
 -- 匿名可调用：返回某日已被占用的时间段（不含客户姓名电话）
 create or replace function public.get_booked_times_for_date(p_date text)
@@ -64,6 +62,76 @@ $$;
 
 revoke all on function public.get_booked_times_for_date(text) from public;
 grant execute on function public.get_booked_times_for_date(text) to anon, authenticated;
+
+create or replace function public.time_to_minutes(t text)
+returns integer
+language sql
+immutable
+as $$
+  select (split_part(t, ':', 1)::integer * 60 + split_part(t, ':', 2)::integer);
+$$;
+
+revoke all on function public.time_to_minutes(text) from public;
+grant execute on function public.time_to_minutes(text) to anon, authenticated;
+
+create or replace function public.booking_schedule_line(p_service text)
+returns text
+language sql
+immutable
+as $$
+  select case
+    when p_service in ('Classic Manicure', 'Gel Manicure', 'Nail Extension') then 'nails'
+    when p_service in (
+      'Classic Lash Extensions',
+      'Hybrid Lash Extensions',
+      'Lash Lift'
+    ) then 'lashes'
+    else 'lashes'
+  end;
+$$;
+
+revoke all on function public.booking_schedule_line(text) from public;
+grant execute on function public.booking_schedule_line(text) to anon, authenticated;
+
+create or replace function public.booking_block_minutes(p_service text)
+returns integer
+language sql
+immutable
+as $$
+  select case public.booking_schedule_line(p_service)
+    when 'nails' then 100
+    else 70
+  end;
+$$;
+
+revoke all on function public.booking_block_minutes(text) from public;
+grant execute on function public.booking_block_minutes(text) to anon, authenticated;
+
+create or replace function public.get_public_booking_blocks_for_date(p_date text)
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'line', public.booking_schedule_line(service),
+        'time', time,
+        'blockMinutes', public.booking_block_minutes(service)
+      )
+      order by time
+    ),
+    '[]'::jsonb
+  )
+  from public.bookings
+  where date = p_date
+    and status <> 'cancelled';
+$$;
+
+revoke all on function public.get_public_booking_blocks_for_date(text) from public;
+grant execute on function public.get_public_booking_blocks_for_date(text)
+  to anon, authenticated;
 
 -- JWT 中的邮箱是否在白名单（供 RLS 与前端 RPC 使用）
 create or replace function public.is_booking_admin()
@@ -166,7 +234,52 @@ set search_path = public
 as $$
 declare
   v_id integer;
+  v_line text;
+  v_block int;
+  v_start int;
+  v_new_end int;
+  v_max int;
 begin
+  v_line := public.booking_schedule_line(p_service);
+  v_block := public.booking_block_minutes(p_service);
+  v_start := public.time_to_minutes(p_time);
+  v_new_end := v_start + v_block;
+
+  with ev as (
+    select public.time_to_minutes(b.time) as t, 1 as d
+    from public.bookings b
+    where b.date = p_date
+      and b.status <> 'cancelled'
+      and public.booking_schedule_line(b.service) = v_line
+    union all
+    select public.time_to_minutes(b.time) + public.booking_block_minutes(b.service), -1
+    from public.bookings b
+    where b.date = p_date
+      and b.status <> 'cancelled'
+      and public.booking_schedule_line(b.service) = v_line
+    union all
+    select v_start, 1
+    union all
+    select v_new_end, -1
+  ),
+  ordered as (
+    select t, d
+    from ev
+    order by t asc, d asc
+  ),
+  runs as (
+    select sum(d) over (order by t asc, d asc) as run
+    from ordered
+  )
+  select coalesce(max(run), 0)
+  into v_max
+  from runs;
+
+  if v_max > 2 then
+    raise exception '该时段刚刚已被预约，请另选时间'
+      using errcode = '23505';
+  end if;
+
   insert into public.bookings (name, phone, service, date, time, notes, status)
   values (
     p_name,
@@ -178,6 +291,7 @@ begin
     p_status
   )
   returning id into v_id;
+
   return v_id;
 end;
 $$;

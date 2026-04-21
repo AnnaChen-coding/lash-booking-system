@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import { services } from '@/data/services'
+import { SCHEDULE_LINES } from '@/data/scheduleConfig'
+import type { ServiceItem } from '@/types/service'
+
+const scheduleHint = (category: ServiceItem['category']) => {
+  const c = SCHEDULE_LINES[category]
+  return `${c.technicianCount} techs · ~${c.serviceDurationMinutes} min + ${c.bufferMinutes} min buffer`
+}
 // -- 属性定义 (Props) ---
 // 接收一个名为 service 的 string，代表当前被选中的服务名称
 const props = defineProps<{
@@ -29,6 +36,7 @@ const selectService = (serviceName: string) => {
       <div class="service-content">
         <span class="service-title">{{ item.name }}</span>
         <span class="service-desc">{{ item.shortDescription }}</span>
+        <span class="service-schedule">{{ scheduleHint(item.category) }}</span>
       </div>
 
       <template #footer>
@@ -93,6 +101,13 @@ const selectService = (serviceName: string) => {
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-text-soft);
+}
+
+.service-schedule {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+  font-weight: 500;
 }
 
 .service-btn {
