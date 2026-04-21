@@ -80,10 +80,21 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
 VITE_API_BASE_URL=https://your-api.example.com
 ```
 
+可选通知配置：
+
+```env
+# 管理员通知邮箱（多个逗号分隔）
+VITE_BOOKING_ADMIN_EMAILS=owner@example.com,manager@example.com
+
+# 可选：Supabase Edge Function 名称（默认 booking-notify）
+VITE_SUPABASE_NOTIFY_FUNCTION=booking-notify
+```
+
 接口约定（可按后端调整，详见 `src/api/bookings.ts`、`src/api/reviews.ts`）：
 
 - **预约**：`GET/POST /bookings`，`DELETE /bookings/:id`，`PATCH /bookings/:id`（body：`{ status }`）
 - **评价**：`GET /reviews`，`POST /reviews`
+- **通知（可选）**：`POST /notifications/booking-success`（预约成功时触发；若接口或 Supabase 函数不可用，前端自动降级到短信模拟并打印日志）
 
 ## 后台登录说明
 

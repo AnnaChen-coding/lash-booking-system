@@ -22,8 +22,8 @@ const AUTO_REFRESH_MS = 15000
 let timerId: number | null = null
 
 const lastRefreshedText = computed(() => {
-  if (!lastRefreshedAt.value) return '等待获取可约时段...'
-  return `最新时段刷新：${lastRefreshedAt.value.toLocaleTimeString()}`
+  if (!lastRefreshedAt.value) return 'Loading available slots...'
+  return `Last refresh: ${lastRefreshedAt.value.toLocaleTimeString()}`
 })
 
 const canRefreshTakenSlots = () =>
@@ -108,36 +108,44 @@ onBeforeUnmount(() => {
       <p class="section-label">Step 2</p>
       <h2>Select Date & Time</h2>
       <p class="section-text">
-        Choose your preferred appointment date and an available time slot.
+        Choose your preferred date and an available time slot.
       </p>
     </div>
 
     <div class="date-box">
       <label class="input-label">Appointment Date</label>
-      <input v-model="selectedDate" type="date" class="date-input" />
+      <el-date-picker
+        v-model="selectedDate"
+        type="date"
+        value-format="YYYY-MM-DD"
+        format="YYYY-MM-DD"
+        placeholder="Select date"
+        class="date-input"
+      />
     </div>
 
     <div v-if="selectedDate" class="slots-wrapper">
       <p class="slot-title">Available Time Slots</p>
       <p class="slot-hint">
-        {{ isRefreshing ? '实时刷新中...' : lastRefreshedText }}
+        {{ isRefreshing ? 'Refreshing...' : lastRefreshedText }}
       </p>
 
       <div class="time-slots">
          <!-- 1. 高亮：当前选中的时间  -->
           <!-- 2. 禁用：调用 Store 的方法，检查该日期下的该时间是否已被占领 -->
            <!-- 条件渲染 -->
-        <button
+        <el-button
           v-for="time in timeSlots"
           :key="time"
           class="time-btn"
           :class="{ selected: selectedTime === time }"
           :disabled="bookingStore.isBooked(selectedDate, time)"
+          round
           @click="handleSelectTime(time)"
         >
           <span v-if="bookingStore.isBooked(selectedDate, time)">Booked</span>
           <span v-else>{{ time }}</span>
-        </button>
+        </el-button>
       </div>
     </div>
   </div>
@@ -198,20 +206,6 @@ onBeforeUnmount(() => {
 
 .date-input {
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  font-size: 15px;
-  font-family: inherit;
-  background: #fff;
-  color: var(--color-text);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 4px rgba(111, 134, 111, 0.12);
 }
 
 .slots-wrapper {
@@ -240,39 +234,31 @@ onBeforeUnmount(() => {
 }
 
 .time-btn {
-  padding: 14px 12px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
-  background: var(--color-button-soft);
+  margin: 0;
   color: var(--color-text);
   font-size: 14px;
   font-weight: 500;
-  transition:
-    transform 0.2s ease,
-    background 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.time-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: var(--color-button);
-  color: var(--color-button-text);
+  justify-self: stretch;
 }
 
 .time-btn.selected {
-  background: var(--color-primary);
+  background: var(--color-primary) !important;
   color: white;
-  border-color: var(--color-primary);
-  box-shadow: 0 8px 18px rgba(111, 134, 111, 0.18);
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 8px 18px rgba(111, 134, 111, 0.18) !important;
 }
 
-.time-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-  background: #ece9e4;
-  color: #8e8a84;
+:deep(.date-input .el-input__wrapper) {
+  border-radius: 14px;
+  min-height: 46px;
+}
+
+:deep(.time-btn.el-button) {
+  width: 100%;
+}
+
+:deep(.time-btn.el-button:disabled) {
+  opacity: 0.65;
 }
 
 @media (max-width: 768px) {

@@ -11,22 +11,37 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:service', value: string): void
 }>()
+
+const selectService = (serviceName: string) => {
+  emit('update:service', serviceName)
+}
 </script>
 
 <template>
   <div class="service-selector">
-    <!-- 动态类名：如果当前项的名称等于 Props 传入的名称，则应用 .active 样式 -->
-     <!-- 点击时向父组件发送最新的服务名称 -->
-    <button
+    <el-card
       v-for="item in services"
       :key="item.id"
       class="service-card"
       :class="{ active: props.service === item.name }"
-      @click="emit('update:service', item.name)"
+      shadow="hover"
     >
-      <span class="service-title">{{ item.name }}</span>
-      <span class="service-desc">{{ item.shortDescription }}</span>
-    </button>
+      <div class="service-content">
+        <span class="service-title">{{ item.name }}</span>
+        <span class="service-desc">{{ item.shortDescription }}</span>
+      </div>
+
+      <template #footer>
+        <el-button
+          class="service-btn"
+          :type="props.service === item.name ? 'primary' : 'default'"
+          round
+          @click="selectService(item.name)"
+        >
+          {{ props.service === item.name ? 'Selected' : 'Choose this service' }}
+        </el-button>
+      </template>
+    </el-card>
   </div>
 </template>
 
@@ -38,35 +53,33 @@ const emit = defineEmits<{
 }
 
 .service-card {
+  border-color: var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+}
+
+.service-content {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   text-align: left;
-
-  padding: 18px 20px;
-  border: 1px solid var(--color-border);
-  border-radius: 18px;
-  background: var(--color-surface);
-  cursor: pointer;
-
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease;
-}
-
-.service-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-primary-light);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+  min-height: 94px;
 }
 
 .service-card.active {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
   box-shadow: 0 10px 24px rgba(111, 134, 111, 0.12);
+}
+
+:deep(.service-card .el-card__body) {
+  padding: 18px 20px 14px;
+}
+
+:deep(.service-card .el-card__footer) {
+  border-top: none;
+  padding: 0 20px 18px;
 }
 
 .service-title {
@@ -80,6 +93,10 @@ const emit = defineEmits<{
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-text-soft);
+}
+
+.service-btn {
+  width: 100%;
 }
 
 @media (max-width: 900px) {

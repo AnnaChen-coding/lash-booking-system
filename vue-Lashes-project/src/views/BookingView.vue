@@ -6,11 +6,13 @@ import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
+import { dispatchBookingSuccessNotification } from '@/services/bookingNotification'
 
 // --- 统一的状态管理 ---
 // 使用一个响应式对象 bookingData 收集所有步骤的数据
 const bookingData = ref<BookingFormData>({
   name: '',
+  email: '',
   phone: '',
   service: '',
   date: '',
@@ -26,9 +28,9 @@ const bookingStore = useBookingStore()
 const buildConflictMessage = (date: string, time: string) => {
   const suggestions = bookingStore.recommendAvailableSlots(date, time, 3)
   if (!suggestions.length) {
-    return '该时段刚被预约，当前日期已无可用时段，请切换日期后重试。'
+    return 'This slot was just booked. No more slots are available on this date. Please choose another date.'
   }
-  return `该时段刚被预约，建议改约：${suggestions.join(' / ')}`
+  return `This slot was just booked. Suggested alternatives: ${suggestions.join(' / ')}`
 }
 
 // --- 回调处理 ---
@@ -40,11 +42,13 @@ const handleTimeSelect = (value: { date: string; time: string }) => {
 // 最终提交逻辑
 const handleSubmitBooking = async (value: {
   name: string
+  email: string
   phone: string
   notes: string
 }) => {
   // 1. 合并最后一步的表单数据
   bookingData.value.name = value.name
+  bookingData.value.email = value.email
   bookingData.value.phone = value.phone
   bookingData.value.notes = value.notes
 // 2. 最终校验：确保前两个步骤的信息也存在
@@ -82,6 +86,21 @@ const handleSubmitBooking = async (value: {
       notes: bookingData.value.notes,
       status: 'pending_payment',
     })
+    const notifyResult = await dispatchBookingSuccessNotification({
+      customerName: bookingData.value.name,
+      customerEmail: bookingData.value.email,
+      customerPhone: bookingData.value.phone,
+      service: bookingData.value.service,
+      date: bookingData.value.date,
+      time: bookingData.value.time,
+      notes: bookingData.value.notes,
+      booking: created,
+    })
+    if (notifyResult.warnings.length) {
+      alert(
+        `Booking submitted, but notification flow partially failed: ${notifyResult.warnings.join('; ')}. Fallback channel is used automatically.`
+      )
+    }
     if (created.status === 'pending_payment') {
       bookingStore.setLastPaymentBooking(created)
       await router.push({
@@ -91,7 +110,7 @@ const handleSubmitBooking = async (value: {
     } else {
       bookingStore.setLastPaymentBooking(created)
       alert(
-        '预约已提交。当前数据库尚未支持「待支付」状态，以下将进入前端模拟支付页（不回写数据库）。完整支付模拟请在 Supabase 执行 supabase/migration_payment_flow.sql。'
+        'Booking submitted. The database does not support pending payment yet, so you will enter a frontend mock payment page (no DB write-back). Run supabase/migration_payment_flow.sql in Supabase for full flow.'
       )
       await router.push({
         name: 'bookingPay',
@@ -100,7 +119,9 @@ const handleSubmitBooking = async (value: {
       })
     }
   } catch (e) {
-    const message = e instanceof Error ? e.message : '预约提交失败，请稍后重试'
+    const message = e instanceof Error
+      ? e.message
+      : 'Booking submission failed, please try again later.'
     const isConflict = /已被预约|already booked|另选时间/i.test(message)
     if (isConflict) {
       const selectedTime = bookingData.value.time
@@ -129,8 +150,7 @@ onMounted(() => {
         <p class="booking-label">Appointment</p>
         <h1 class="booking-title">Book Your Beauty Session</h1>
         <p class="booking-description">
-          Choose your service, select an available date and time, and complete
-          your booking in a few simple steps.
+          Choose your service, date and time, then finish your booking in a few steps.
         </p>
       </div>
 
@@ -147,37 +167,39 @@ onMounted(() => {
           <TimePicker @select-time="handleTimeSelect" />
         </div>
 
-        <div
-          class="booking-summary"
+        <el-card
+          class="booking-summary-card"
+          shadow="never"
           :class="{
             filled: bookingData.service || bookingData.date || bookingData.time
           }"
         >
-          <h3 class="summary-title">Your Selection</h3>
+          <template #header>
+            <h3 class="summary-title">Your Selection</h3>
+          </template>
 
-          <div class="summary-grid">
-            <div class="summary-item">
-              <span class="summary-label">Service</span>
-              <span class="summary-value">
+          <el-descriptions
+            :column="3"
+            border
+            size="large"
+          >
+            <el-descriptions-item label="Service">
+              <span :class="{ pending: !bookingData.service }">
                 {{ bookingData.service || 'Not selected yet' }}
               </span>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">Date</span>
-              <span class="summary-value">
+            </el-descriptions-item>
+            <el-descriptions-item label="Date">
+              <span :class="{ pending: !bookingData.date }">
                 {{ bookingData.date || 'Not selected yet' }}
               </span>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">Time</span>
-              <span class="summary-value">
+            </el-descriptions-item>
+            <el-descriptions-item label="Time">
+              <span :class="{ pending: !bookingData.time }">
                 {{ bookingData.time || 'Not selected yet' }}
               </span>
-            </div>
-          </div>
-        </div>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
 
         <div
           v-if="bookingData.service && bookingData.date && bookingData.time"
@@ -265,15 +287,14 @@ onMounted(() => {
   color: var(--color-text);
 }
 
-.booking-summary {
-  padding: 24px;
+.booking-summary-card {
   border-radius: 22px;
+  border-color: var(--color-border);
   background: var(--color-bg-soft);
-  border: 1px solid var(--color-border);
   transition: all 0.25s ease;
 }
 
-.booking-summary.filled {
+.booking-summary-card.filled {
   background: linear-gradient(
     135deg,
     var(--color-primary-soft),
@@ -283,42 +304,36 @@ onMounted(() => {
 }
 
 .summary-title {
-  margin: 0 0 16px;
+  margin: 0;
   font-size: 20px;
   font-family: var(--font-heading);
   color: var(--color-text);
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+:deep(.booking-summary-card .el-card__header) {
+  border-bottom: none;
+  padding-bottom: 6px;
 }
 
-.summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(0, 0, 0, 0.04);
+:deep(.booking-summary-card .el-card__body) {
+  padding-top: 8px;
 }
 
-.summary-label {
-  font-size: 13px;
+:deep(.booking-summary-card .el-descriptions__label) {
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
   color: var(--color-text-muted);
 }
 
-.summary-value {
+:deep(.booking-summary-card .el-descriptions__content) {
   font-size: 15px;
   font-weight: 500;
   line-height: 1.5;
   color: var(--color-text);
-  word-break: break-word;
+}
+
+.pending {
+  color: var(--color-text-soft);
+  font-weight: 400;
 }
 
 @media (max-width: 768px) {
@@ -335,8 +350,17 @@ onMounted(() => {
     font-size: 38px;
   }
 
-  .summary-grid {
+  :deep(.booking-summary-card .el-descriptions__body .el-descriptions__table) {
+    display: block;
+  }
+
+  :deep(.booking-summary-card .el-descriptions__body tr) {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  :deep(.booking-summary-card .el-descriptions__body td) {
+    width: 100%;
   }
 }
 </style>
