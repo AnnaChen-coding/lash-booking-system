@@ -5,11 +5,16 @@ import { ElMessage } from 'element-plus'
 // 使用 defineProps 定义组件接收的外部数据
 
 
-defineProps<{
-  service: string
-  date: string
-  time: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    service: string
+    date: string
+    time: string
+    /** 提交预约进行中，防止重复点击 */
+    submitting?: boolean
+  }>(),
+  { submitting: false }
+)
 
 // --- 事件定义 (Emits) ---
 // 定义组件可以向外触发的事件
@@ -32,6 +37,7 @@ const form = reactive({
 })
 // --- 逻辑处理 (Methods) ---
 const handleSubmit = () => {
+  if (props.submitting) return
   const name = form.name.trim()
   const phone = form.phone.trim()
   const notes = form.notes.trim()
@@ -71,6 +77,7 @@ const handleSubmit = () => {
 
     <el-form
       label-position="top"
+      :disabled="submitting"
       @submit.prevent="handleSubmit"
     >
       <el-form-item label="Name">
@@ -112,8 +119,10 @@ const handleSubmit = () => {
           type="primary"
           round
           native-type="submit"
+          :loading="submitting"
+          :disabled="submitting"
         >
-          Submit Booking
+          {{ submitting ? 'Submitting…' : 'Submit Booking' }}
         </el-button>
       </el-form-item>
     </el-form>

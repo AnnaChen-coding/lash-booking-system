@@ -4,6 +4,7 @@ import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
+import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
 
 const props = defineProps<{
   /** 当前所选服务名（与 `services` 一致），用于按线路/技师数算可约时段 */
@@ -26,10 +27,24 @@ const lastRefreshedAt = ref<Date | null>(null)
 const AUTO_REFRESH_MS = 15000
 let timerId: number | null = null
 
+const needsRemoteSlots = computed(
+  () => isSupabaseConfigured() && !auth.canAccessAdmin
+)
+
 const lastRefreshedText = computed(() => {
-  if (!lastRefreshedAt.value) return 'Loading available slots...'
-  return `Last refresh: ${lastRefreshedAt.value.toLocaleTimeString()}`
+  if (!needsRemoteSlots.value) {
+    return 'Local schedule preview (connect Supabase for live availability).'
+  }
+  if (!lastRefreshedAt.value) return 'Syncing available slots…'
+  return `Last updated: ${lastRefreshedAt.value.toLocaleTimeString()}`
 })
+
+const slotsLoadLocked = computed(
+  () =>
+    Boolean(selectedDate.value) &&
+    needsRemoteSlots.value &&
+    isRefreshing.value
+)
 
 const canRefreshTakenSlots = () =>
   Boolean(selectedDate.value) && isSupabaseConfigured() && !auth.canAccessAdmin
@@ -77,6 +92,7 @@ watch(
   (d, oldDate) => {
     if (d !== oldDate) {
       selectedTime.value = ''
+      lastRefreshedAt.value = null
       if (d) {
         emit('select-time', { date: d, time: '' })
       }
@@ -112,6 +128,7 @@ watch(
 const handleSelectTime = (time: string) => {
   // 如果还没选日期，不允许选时间
   if (!selectedDate.value) return
+  if (slotsLoadLocked.value) return
 
   selectedTime.value = time
 // 将选中的日期和时间打包发送给父组件
@@ -155,13 +172,28 @@ onBeforeUnmount(() => {
     <div v-if="selectedDate" class="slots-wrapper">
       <p class="slot-title">Available Time Slots</p>
       <p class="slot-hint">
-        {{ isRefreshing ? 'Refreshing...' : lastRefreshedText }}
+        {{ slotsLoadLocked ? 'Syncing…' : lastRefreshedText }}
       </p>
 
-      <div class="time-slots">
-         <!-- 1. 高亮：当前选中的时间  -->
-          <!-- 2. 禁用：调用 Store 的方法，检查该日期下的该时间是否已被占领 -->
-           <!-- 条件渲染 -->
+      <div
+        v-if="slotsLoadLocked"
+        class="time-slots time-slots-skeleton"
+        aria-busy="true"
+        aria-label="Loading time slots"
+      >
+        <AppSkeletonPulse
+          v-for="n in 9"
+          :key="n"
+          height="40px"
+          radius="999px"
+          class="slot-skel"
+        />
+      </div>
+
+      <div
+        v-else
+        class="time-slots"
+      >
         <el-button
           v-for="time in timeSlots"
           :key="time"
@@ -259,6 +291,11 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.time-slots-skeleton .slot-skel {
+  width: 100%;
+  display: block;
 }
 
 .time-btn {

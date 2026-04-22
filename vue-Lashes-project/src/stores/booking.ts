@@ -20,6 +20,8 @@ import type { PublicBookingBlock } from '@/types/schedule'
 
 export const useBookingStore = defineStore('booking', () => {
   const bookings = ref<BookingItem[]>([])
+  /** 全量预约列表拉取中（管理端 / 无 Supabase 场景），用于骨架屏与防重复操作 */
+  const bookingsLoading = ref(false)
   /** Supabase 匿名：某日已占区间（线路 / 开始时间 / 块长），不暴露客户信息 */
   const scheduleBlocksByDate = reactive<Record<string, PublicBookingBlock[]>>({})
   /** 避免同一日期并发重复请求 */
@@ -27,13 +29,18 @@ export const useBookingStore = defineStore('booking', () => {
 
   // 加载所有预约
   const hydrateBookings = async () => {
-    // 如果配置了 Supabase 并且不是管理员，则清空 bookings
-    if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
-      bookings.value = []
-      return
+    bookingsLoading.value = true
+    try {
+      // 如果配置了 Supabase 并且不是管理员，则清空 bookings
+      if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
+        bookings.value = []
+        return
+      }
+      // 否则从 Supabase 拉取所有预约
+      bookings.value = await fetchBookings()
+    } finally {
+      bookingsLoading.value = false
     }
-    // 否则从 Supabase 拉取所有预约
-    bookings.value = await fetchBookings()
   }
   // 只加载某日的已占时段
   const loadTakenSlotsForDate = async (
@@ -170,6 +177,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   return {
     bookings,
+    bookingsLoading,
     lastPaymentBooking,
     scheduleBlocksByDate,
     hydrateBookings,

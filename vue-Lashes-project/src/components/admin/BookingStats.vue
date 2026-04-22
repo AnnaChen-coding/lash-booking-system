@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useBookingStore } from '@/stores/booking'
+import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
 
 const bookingStore = useBookingStore()
 
@@ -129,7 +130,38 @@ const hotService = computed(() => {
 </script>
 
 <template>
-  <div class="stats-grid">
+  <div
+    v-if="bookingStore.bookingsLoading && bookingStore.bookings.length === 0"
+    class="stats-grid stats-skeleton"
+    aria-busy="true"
+    aria-label="Loading statistics"
+  >
+    <div
+      v-for="i in 4"
+      :key="i"
+      class="stat-card sk-card"
+    >
+      <AppSkeletonPulse
+        height="14px"
+        width="42%"
+        class="sk-line"
+      />
+      <AppSkeletonPulse
+        height="32px"
+        width="28%"
+        class="sk-line sk-line-lg"
+      />
+      <AppSkeletonPulse
+        height="12px"
+        width="72%"
+        class="sk-line"
+      />
+    </div>
+  </div>
+  <div
+    v-else
+    class="stats-grid"
+  >
     <div class="stat-card">
       <p class="stat-label">今日预约数</p>
       <h3 class="stat-value">{{ todayCount }}</h3>
@@ -238,5 +270,20 @@ const hotService = computed(() => {
 .trend-label {
   font-size: 11px;
   color: var(--color-text-muted, #8a8086);
+}
+
+.stats-skeleton .sk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
+}
+
+.sk-line {
+  display: block;
+}
+
+.sk-line-lg {
+  margin-top: 4px;
 }
 </style>

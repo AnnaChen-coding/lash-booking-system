@@ -20,6 +20,8 @@ const bookingData = ref<BookingFormData>({
   notes: '',
 })
 
+const isSubmitting = ref(false)
+
 const route = useRoute()
 const router = useRouter()
 
@@ -51,6 +53,7 @@ const handleSubmitBooking = async (value: {
   phone: string
   notes: string
 }) => {
+  if (isSubmitting.value) return
   // 1. 合并最后一步的表单数据
   bookingData.value.name = value.name
   bookingData.value.email = value.email
@@ -65,23 +68,24 @@ const handleSubmitBooking = async (value: {
     alert('Please select a service, date, and time first.')
     return
   }
-  // 冲突校验前强制刷新当前日期缓存，避免把本地缓存当成绝对真相
-  await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
-  // 冲突校验：检查在提交瞬间该时段是否被他人占用（双重保险）
-  const alreadyBooked = bookingStore.isBooked(
-    bookingData.value.date,
-    bookingData.value.time,
-    bookingData.value.service
-  )
 
-  if (alreadyBooked) {
-    const selectedTime = bookingData.value.time
-    bookingData.value.time = ''
-    alert(buildConflictMessage(bookingData.value.date, selectedTime))
-    return
-  }
-// 调用 API 层（经 Store）执行保存操作
+  isSubmitting.value = true
   try {
+    // 冲突校验前强制刷新当前日期缓存，避免把本地缓存当成绝对真相
+    await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
+    const alreadyBooked = bookingStore.isBooked(
+      bookingData.value.date,
+      bookingData.value.time,
+      bookingData.value.service
+    )
+
+    if (alreadyBooked) {
+      const selectedTime = bookingData.value.time
+      bookingData.value.time = ''
+      alert(buildConflictMessage(bookingData.value.date, selectedTime))
+      return
+    }
+
     const created = await bookingStore.addBooking({
       id: Date.now(),
       name: bookingData.value.name,
@@ -138,6 +142,8 @@ const handleSubmitBooking = async (value: {
       return
     }
     alert(message)
+  } finally {
+    isSubmitting.value = false
   }
 }
 onMounted(() => {
@@ -219,6 +225,7 @@ onMounted(() => {
             :service="bookingData.service"
             :date="bookingData.date"
             :time="bookingData.time"
+            :submitting="isSubmitting"
             @submit-booking="handleSubmitBooking"
           />
         </div>

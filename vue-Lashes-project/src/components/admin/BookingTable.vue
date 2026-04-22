@@ -37,6 +37,7 @@ const handleStatusChange = (id: number, event: Event) => {
       <div class="booking-actions">
         <select
           :value="booking.status"
+          :disabled="bookingStore.bookingsLoading"
           @change="handleStatusChange(booking.id, $event)"
         >
           <option value="pending">Pending</option>
@@ -46,7 +47,12 @@ const handleStatusChange = (id: number, event: Event) => {
           <option value="cancelled">Cancelled</option>
         </select>
 
-        <button class="delete-btn" @click="handleDelete(booking.id)">
+        <button
+          class="delete-btn"
+          type="button"
+          :disabled="bookingStore.bookingsLoading"
+          @click="handleDelete(booking.id)"
+        >
           Delete
         </button>
       </div>
@@ -91,5 +97,11 @@ const handleStatusChange = (id: number, event: Event) => {
   border: none;
   border-radius: 10px;
   cursor: pointer;
+}
+
+.delete-btn:disabled,
+.booking-actions select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

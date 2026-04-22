@@ -22,17 +22,15 @@ const authStore = useAuthStore()
 const bookingStore = useBookingStore()
 const reviewStore = useReviewStore()
 
-// void 的作用是：我知道这是个 Promise，但我这里不接它的返回值，我就想让它执行，执行完了就完事了。
+// 先启动数据拉取再 mount，便于首屏展示 bookingsLoading 骨架（hydrate 在首个 await 前会同步置 loading）
 void (async () => {
   await authStore.bootstrapAuth()
-  // 如果 Supabase 没有配置，或者用户有管理员权限，则加载所有预约
   const loadAllBookings =
     !isSupabaseConfigured() || authStore.canAccessAdmin
-  // 加载所有预约和评价
-  await Promise.all([
-    loadAllBookings ? bookingStore.hydrateBookings() : Promise.resolve(),
-    reviewStore.hydrateReviews(), // 加载所有评价
-  ])
-  // 挂载应用
+  const bookingsPromise = loadAllBookings
+    ? bookingStore.hydrateBookings()
+    : Promise.resolve()
+  const reviewsPromise = reviewStore.hydrateReviews()
   app.mount('#app')
+  await Promise.all([bookingsPromise, reviewsPromise])
 })()
