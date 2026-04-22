@@ -6,6 +6,10 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string
+  /** 设为 `true` 时，通过 Supabase Edge Function 做服务推荐（服务端 DeepSeek）；密钥只在服务端 */
+  readonly VITE_ENABLE_OPENAI_SERVICE_RECOMMEND?: string
+  /** 可选，默认 `service-recommend` */
+  readonly VITE_SUPABASE_SERVICE_RECOMMEND_FUNCTION?: string
 }
 
 interface ImportMeta {

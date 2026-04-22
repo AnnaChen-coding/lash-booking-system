@@ -3,7 +3,17 @@
 import { services } from '@/data/services'
 import ServiceDetailCard from './ServiceDetailCard.vue'
 import ServiceFilter from './ServiceFilter.vue'
-import {ref, computed} from 'vue'
+import ServiceAiHelper from '@/components/common/ServiceAiHelper.vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
+const router = useRouter()
+
+const goBookingWithService = (serviceName: string) => {
+  router.push({ name: 'booking', query: { service: serviceName } }).catch(() => {})
+  ElMessage.success('Taking you to booking with this service pre-selected.')
+}
 // 当前选中的分类（响应式）
 // 'all' 表示默认显示全部服务
 const currentCategory = ref('all')
@@ -39,6 +49,10 @@ const filteredServices = computed(() => {
         :current-category="currentCategory"
         @change-category="handleCategoryChange"
       />
+
+      <div class="ai-helper-wrap">
+        <ServiceAiHelper @apply-service="goBookingWithService" />
+      </div>
 
       <div class="services-grid">
         <ServiceDetailCard
@@ -80,6 +94,11 @@ const filteredServices = computed(() => {
   font-size: 16px;
   line-height: 1.7;
   color: var(--color-text-soft);
+}
+
+.ai-helper-wrap {
+  max-width: 720px;
+  margin: 8px auto 0;
 }
 
 .services-grid {

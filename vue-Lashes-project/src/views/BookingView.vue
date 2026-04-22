@@ -2,11 +2,13 @@
 import ServiceSelector from '@/components/booking/ServiceSelector.vue'
 import TimePicker from '@/components/booking/TimePicker.vue'
 import BookingForm from '@/components/booking/BookingForm.vue'
+import ServiceAiHelper from '@/components/common/ServiceAiHelper.vue'
 import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
 import { dispatchBookingSuccessNotification } from '@/services/bookingNotification'
+import { ElMessage } from 'element-plus'
 
 // --- 统一的状态管理 ---
 // 使用一个响应式对象 bookingData 收集所有步骤的数据
@@ -153,6 +155,11 @@ onMounted(() => {
     bookingData.value.service = serviceFromQuery
   }
 })
+
+const handleAiApplyService = (name: string) => {
+  bookingData.value.service = name
+  ElMessage.success(`Service updated: ${name}`)
+}
 </script>
 
 <template>
@@ -173,6 +180,7 @@ onMounted(() => {
             :service="bookingData.service"
             @update:service="val => bookingData.service = val"
           />
+          <ServiceAiHelper @apply-service="handleAiApplyService" />
         </div>
 
         <div class="section-block">
