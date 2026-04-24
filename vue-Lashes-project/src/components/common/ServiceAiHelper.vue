@@ -82,7 +82,7 @@ const apply = () => {
         Ask AI
       </el-button>
       <el-button
-        v-if="showApply && recommendedName"
+        v-if="props.showApply && recommendedName"
         round
         plain
         type="primary"
