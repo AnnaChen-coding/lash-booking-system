@@ -2,11 +2,10 @@
   <header class="navbar">
     <div class="left">
       <div class="brand">
-        <img
-          src="../assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.png"
-          alt="logo"
-          class="logo"
-        />
+        <picture>
+          <source :srcset="logoWebp" type="image/webp" />
+          <img :src="logoPng" alt="logo" class="logo" />
+        </picture>
         <span class="brand-name">Gaza & Glaze</span>
       </div>
     </div>
@@ -115,6 +114,8 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import logoPng from "@/assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.png";
+import logoWebp from "@/assets/image/Gaze-&-Glaze--1773846583217/Gaze & Glaze -logo.webp";
 
 const auth = useAuthStore();
 const router = useRouter();

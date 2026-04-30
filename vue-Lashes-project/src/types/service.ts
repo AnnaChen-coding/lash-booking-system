@@ -7,5 +7,7 @@ export interface ServiceItem {
   shortDescription: string
   description: string
   image: string
+  imageWebp?: string
+  imageFallback?: string
   popular?: boolean
 }

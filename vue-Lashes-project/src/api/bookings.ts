@@ -410,7 +410,8 @@ export async function patchBookingStatus(
   // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {
     // 调用远程 API
-    await request<void>('PATCH', `/bookings/${id}`, { body: { status } })
+    // FastAPI 路由：PATCH /bookings/{id}/status
+    await request<void>('PATCH', `/bookings/${id}/status`, { body: { status } })
     return
   }
   // 否则读取本地存储

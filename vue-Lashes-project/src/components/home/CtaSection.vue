@@ -34,6 +34,10 @@
 .contact-section {
   padding: 100px 0;
   background-image: url(../../assets/image/background\ hero.jpg);
+  background-image: image-set(
+    url(../../assets/image/background\ hero.webp) type("image/webp"),
+    url(../../assets/image/background\ hero.jpg) type("image/jpeg")
+  );
   background-size: cover;
 
   display: flex;

@@ -4,12 +4,6 @@ import {
   type RouteLocationNormalized,
 } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
-import ServicesView from '../views/ServicesView.vue'
-import BookingView from '../views/BookingView.vue'
-import BookingPaymentView from '../views/BookingPaymentView.vue'
-import BookingPaymentResultView from '../views/BookingPaymentResultView.vue'
-import AdminView from '../views/AdminView.vue'
-import LoginView from '../views/LoginView.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
@@ -21,33 +15,33 @@ const routes = [
   {
     path: '/services',
     name: 'services',
-    component: ServicesView,
+    component: () => import('../views/ServicesView.vue'),
   },
   {
     path: '/booking',
     name: 'booking',
-    component: BookingView,
+    component: () => import('../views/BookingView.vue'),
   },
   {
     path: '/booking/pay/:id',
     name: 'bookingPay',
-    component: BookingPaymentView,
+    component: () => import('../views/BookingPaymentView.vue'),
   },
   {
     path: '/booking/pay/:id/result',
     name: 'bookingPayResult',
-    component: BookingPaymentResultView,
+    component: () => import('../views/BookingPaymentResultView.vue'),
   },
   {
     path: '/login',
     name: 'login',
-    component: LoginView,
+    component: () => import('../views/LoginView.vue'),
     meta: { guestOnly: true },
   },
   {
     path: '/admin',
     name: 'admin',
-    component: AdminView,
+    component: () => import('../views/AdminView.vue'),
     meta: { requiresAdmin: true },
   },
 ]

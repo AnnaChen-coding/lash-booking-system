@@ -27,7 +27,10 @@ const handleBookNow = () => {
 <template>
   <div class="service-card">
     <div class="service-image">
-      <img :src="service.image" :alt="service.name" />
+      <picture>
+        <source v-if="service.imageWebp" :srcset="service.imageWebp" type="image/webp" />
+        <img :src="service.imageFallback || service.image" :alt="service.name" />
+      </picture>
     </div>
 
     <div class="service-content">

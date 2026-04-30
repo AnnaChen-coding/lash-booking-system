@@ -1,8 +1,21 @@
 <template>
-    <section class="hero" 
-    :style="{ backgroundImage: `url(${currentSlice?.image})` }"
-    @mouseenter="stopAutoPlay"
-    @mouseleave="startAutoPlay">
+    <section class="hero" @mouseenter="stopAutoPlay" @mouseleave="startAutoPlay">
+        <picture class="hero-bg" :key="currentIndex">
+            <source
+              v-if="currentSlice?.imageWebp"
+              :srcset="currentSlice?.imageWebp"
+              type="image/webp"
+            />
+            <img
+              :src="currentSlice?.imageFallback || currentSlice?.image"
+              alt=""
+              width="1920"
+              height="1080"
+              :loading="currentIndex === 0 ? 'eager' : 'lazy'"
+              :fetchpriority="currentIndex === 0 ? 'high' : 'auto'"
+              @load="onHeroImageLoad"
+            />
+        </picture>
         <div class="container">
             <div class="hero-content" :key="currentIndex">
                 <p class="hero-subtitle">{{ currentSlice?.subtitle }}</p>
@@ -28,10 +41,22 @@
     min-height: 100vh;
     display: flex;
     align-items: center;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
     position: relative;
+}
+.hero-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+}
+.hero-bg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.container {
+    position: relative;
+    z-index: 1;
 }
 .hero-content {
     max-width: 680px;
@@ -126,7 +151,9 @@ import { ref, computed, onMounted, onUnmounted} from 'vue'
 import { heroSlides } from '@/data/heroSlides'
 
 let timer: number | undefined
+let autoplayDelayTimer: number | undefined
 const currentIndex = ref(0)
+const heroReady = ref(false)
 const currentSlice = computed(() => heroSlides[currentIndex.value]) 
 // 下一张
 const nextSlide = () => {
@@ -140,6 +167,7 @@ const prevSlide = () => {
 // 自动播放
 // 自动播放开始
 const startAutoPlay = () => {
+  if (!heroReady.value) return
     // 之前存在的清理掉
   stopAutoPlay()
 //创建定时器
@@ -152,6 +180,10 @@ const stopAutoPlay = () => {
   if (timer) {
     clearInterval(timer)
     timer = undefined
+  }
+  if (autoplayDelayTimer) {
+    clearTimeout(autoplayDelayTimer)
+    autoplayDelayTimer = undefined
   }
 }
 // 重置自动播放
@@ -168,9 +200,17 @@ const handlePrev = () => {
   prevSlide()
   resetAutoPlay()
 }
+const onHeroImageLoad = () => {
+  if (heroReady.value) return
+  heroReady.value = true
+  // 首屏图先稳定渲染，再启动轮播，避免 LCP 被轮播延迟。
+  autoplayDelayTimer = window.setTimeout(() => {
+    startAutoPlay()
+  }, 6000)
+}
 // 页面加载完成后执行
 onMounted(() => {
-  startAutoPlay()
+  // 等首屏图片加载完成后再开启自动轮播
 })
 // 组件销毁时，停止
 onUnmounted(() => {

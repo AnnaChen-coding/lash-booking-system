@@ -1,7 +1,18 @@
 <template>
   <article class="service-card">
     <div class="service-image-wrapper">
-      <img :src="serviceName.image" :alt="serviceName.title" class="service-image" />
+      <picture>
+        <source
+          v-if="serviceName.imageWebp"
+          :srcset="serviceName.imageWebp"
+          type="image/webp"
+        />
+        <img
+          :src="serviceName.imageFallback || serviceName.image"
+          :alt="serviceName.title"
+          class="service-image"
+        />
+      </picture>
       <div class="service-overlay">
         <h3 class="service-title">{{ serviceName.title }}</h3>
       </div>

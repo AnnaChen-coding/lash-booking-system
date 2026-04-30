@@ -1,10 +1,14 @@
-import serviceImg1 from '@/assets/image/lashes ai.png'
-import serviceImg2 from '@/assets/image/nails ai.png'
+import serviceImg1Webp from '@/assets/image/lashes ai.webp'
+import serviceImg1Fallback from '@/assets/image/lashes ai.png'
+import serviceImg2Webp from '@/assets/image/nails ai.webp'
+import serviceImg2Fallback from '@/assets/image/nails ai.png'
 
 export interface ServiceItem {
   id: number
   title: string
   image: string
+  imageWebp?: string
+  imageFallback?: string
   price: string
   period?: string
   highlight: string
@@ -18,7 +22,9 @@ export const services: ServiceItem[] = [
   {
     id: 1,
     title: 'The Signature',
-    image: serviceImg1,
+    image: serviceImg1Webp,
+    imageWebp: serviceImg1Webp,
+    imageFallback: serviceImg1Fallback,
     price: '$59',
     period: '/ month',
     highlight: '1 Freebie Service',
@@ -34,7 +40,9 @@ export const services: ServiceItem[] = [
   {
     id: 2,
     title: 'The Deluxe',
-    image: serviceImg2,
+    image: serviceImg2Webp,
+    imageWebp: serviceImg2Webp,
+    imageFallback: serviceImg2Fallback,
     price: '$99',
     period: '/ month',
     highlight: '2 Freebie Services',
