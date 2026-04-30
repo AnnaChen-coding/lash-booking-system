@@ -71,13 +71,13 @@ const handleSubmit = () => {
       class="booking-meta"
     >
       <template #title>
-        Service: {{ service }} | Date: {{ date }} | Time: {{ time }}
+        Service: {{ props.service }} | Date: {{ props.date }} | Time: {{ props.time }}
       </template>
     </el-alert>
 
     <el-form
       label-position="top"
-      :disabled="submitting"
+      :disabled="props.submitting"
       @submit.prevent="handleSubmit"
     >
       <el-form-item label="Name">
@@ -119,10 +119,10 @@ const handleSubmit = () => {
           type="primary"
           round
           native-type="submit"
-          :loading="submitting"
-          :disabled="submitting"
+          :loading="props.submitting"
+          :disabled="props.submitting"
         >
-          {{ submitting ? 'Submitting…' : 'Submit Booking' }}
+          {{ props.submitting ? 'Submitting…' : 'Submit Booking' }}
         </el-button>
       </el-form-item>
     </el-form>

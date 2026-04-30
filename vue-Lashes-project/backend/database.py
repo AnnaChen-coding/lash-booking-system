@@ -1,20 +1,23 @@
 """
 数据库连接与会话管理。
 
-使用 SQLite 作为最小可运行存储，便于本地演示与面试讲解。
+默认使用 SQLite（零配置），也支持通过 DATABASE_URL 切换到 PostgreSQL 等数据库。
 """
+
+import os
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# SQLite 数据库文件放在 backend 目录下，便于项目打包展示。
-DATABASE_URL = "sqlite:///./app.db"
+# 优先使用环境变量 DATABASE_URL；未配置时回退到本地 SQLite。
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
-# SQLite 需要关闭同线程检查，FastAPI 多请求场景才可稳定访问。
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-)
+# 仅 SQLite 需要 check_same_thread=False；PostgreSQL 等不需要。
+engine_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # 统一会话工厂：关闭自动提交，显式 commit 更清晰。
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

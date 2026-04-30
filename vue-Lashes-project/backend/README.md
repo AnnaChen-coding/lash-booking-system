@@ -6,6 +6,7 @@
 - FastAPI
 - SQLAlchemy
 - SQLite
+- PostgreSQL（可选，通过 `DATABASE_URL`）
 - Uvicorn
 
 ## 1) 安装依赖
@@ -19,7 +20,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 2) 启动后端
+## 2) 启动后端（本地 SQLite 零配置）
 
 ```bash
 cd backend
@@ -33,7 +34,22 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 > 首次启动会自动创建 `backend/app.db` 和 `bookings` 表。
 
-## 3) 前端 .env.local 配置
+## 3) 启动后端（PostgreSQL 方式）
+
+设置 `DATABASE_URL` 后，后端会优先连接 PostgreSQL（不再使用 SQLite）。
+
+```bash
+cd backend
+source .venv/bin/activate
+export DATABASE_URL="postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/lashes_db"
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+说明：
+- 若未设置 `DATABASE_URL`，默认回退到 `sqlite:///./app.db`
+- `bookings` 表字段与接口行为保持一致，启动时仍会自动建表
+
+## 4) 前端 .env.local 配置
 
 在项目根目录创建或修改 `.env.local`：
 
@@ -46,7 +62,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - REST API（配置 `VITE_API_BASE_URL` 且未配置 Supabase 时）
 - localStorage（两者都不可用时）
 
-## 4) 启动 Vue 前端
+## 5) 启动 Vue 前端
 
 在项目根目录执行：
 
@@ -58,7 +74,7 @@ npm run dev
 默认访问地址通常为：
 - [http://localhost:5173](http://localhost:5173)
 
-## 5) 如何测试新增接口
+## 6) 如何测试新增接口
 
 ### 方式 A：Swagger（推荐演示）
 1. 打开 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)

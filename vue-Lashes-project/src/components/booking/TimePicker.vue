@@ -199,11 +199,11 @@ onBeforeUnmount(() => {
           :key="time"
           class="time-btn"
           :class="{ selected: selectedTime === time }"
-          :disabled="bookingStore.isBooked(selectedDate, time, service)"
+          :disabled="bookingStore.isBooked(selectedDate, time, props.service)"
           round
           @click="handleSelectTime(time)"
         >
-          <span v-if="bookingStore.isBooked(selectedDate, time, service)">Booked</span>
+          <span v-if="bookingStore.isBooked(selectedDate, time, props.service)">Booked</span>
           <span v-else>{{ time }}</span>
         </el-button>
       </div>
