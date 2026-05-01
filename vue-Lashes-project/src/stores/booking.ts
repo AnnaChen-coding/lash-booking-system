@@ -89,34 +89,44 @@ export const useBookingStore = defineStore('booking', () => {
       time
     )
   }
-
+  // 推荐可用时段
   const recommendAvailableSlots = (
     date: string,
     preferredTime: string,
     limit = 3,
     service?: string
   ): string[] => {
+    // 如果日期为空，则返回空数组
     if (!date) return []
+    // 获取可用时段
     const available = timeSlots.filter((slot) => !isBooked(date, slot, service))
+    // 如果可用时段为空，则返回空数组
     if (!available.length) return []
-
+    // 获取首选时段的索引
     const preferredIndex = timeSlots.indexOf(preferredTime)
+    // 如果首选时段索引小于0，则返回前limit个可用时段
     if (preferredIndex < 0) {
       return available.slice(0, limit)
     }
-
+    // 否则返回排序后的可用时段
     return [...available]
       .sort((a, b) => {
+        // 计算a和首选时段的距离
         const aDistance = Math.abs(timeSlots.indexOf(a) - preferredIndex)
+        // 计算b和首选时段的距离
         const bDistance = Math.abs(timeSlots.indexOf(b) - preferredIndex)
+        // 如果a和b的距离不相等，则返回距离小的
         if (aDistance !== bDistance) return aDistance - bDistance
+        // 如果a和b的距离相等，则返回a和b的索引差
         return timeSlots.indexOf(a) - timeSlots.indexOf(b)
       })
       .slice(0, limit)
   }
-
+  // 合并到已占时段缓存
   const mergeBlockIntoCache = (booking: BookingItem) => {
+    // 如果未配置 Supabase 或者管理员，则直接返回
     if (!isSupabaseConfigured() || useAuthStore().canAccessAdmin) return
+    // 如果预约状态为已取消，则直接返回
     if (booking.status === 'cancelled') return
     const block = bookingToPublicBlock(booking)
     if (!block) return
@@ -127,7 +137,7 @@ export const useBookingStore = defineStore('booking', () => {
   }
   /** 支付页展示用：上一笔刚提交的预约（匿名用户无全表列表时也够用） */
   const lastPaymentBooking = ref<BookingItem | null>(null)
-
+//  设置最后一笔支付预约
   const setLastPaymentBooking = (row: BookingItem | null) => {
     lastPaymentBooking.value = row
   }

@@ -28,7 +28,7 @@ const handleSubmit = async () => {
         return
       }
       const r = await auth.loginWithSupabase(form.email, form.password)
-      if (!r.ok) {
+      if (r.ok === false) {
         error.value = r.message
         return
       }

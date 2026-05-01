@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { handlePaymentCallback } from '@/lib/paymentCallback'
+import { toError } from '@/lib/toError'
 import { useBookingStore } from '@/stores/booking'
 import type { BookingItem } from '@/types/booking'
 import { computed, onUnmounted, ref } from 'vue'
@@ -14,8 +15,11 @@ const mockMode = computed(() => route.query.mock === '1')
 const paying = ref(false)
 const methodChosen = ref<'alipay' | 'wechat' | null>(null)
 
-/** 约 20% 概率模拟渠道失败（无回调、不改库） */
-const PAYMENT_FAIL_PROB = 0.2
+/** 默认 0；需在 .env 设置 VITE_PAYMENT_SIMULATE_FAIL_PROB（如 0.2）才随机进失败页 */
+const PAYMENT_SIMULATE_FAIL_PROB = Math.min(
+  1,
+  Math.max(0, Number(import.meta.env.VITE_PAYMENT_SIMULATE_FAIL_PROB) || 0)
+)
 const simulateTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const booking = computed((): BookingItem | null => {
@@ -45,7 +49,7 @@ async function onPayChannel(channel: 'alipay' | 'wechat') {
   simulateTimer.value = setTimeout(async () => {
     simulateTimer.value = null
     try {
-      const failed = Math.random() < PAYMENT_FAIL_PROB
+      const failed = Math.random() < PAYMENT_SIMULATE_FAIL_PROB
       if (failed) {
         paying.value = false
         await router.push({
@@ -78,7 +82,7 @@ async function onPayChannel(channel: 'alipay' | 'wechat') {
       })
     } catch (e) {
       paying.value = false
-      alert(e instanceof Error ? e.message : '支付处理失败')
+      alert(toError(e).message)
     }
   }, 1000)
 }
@@ -93,6 +97,9 @@ async function onPayChannel(channel: 'alipay' | 'wechat') {
         以下仅前端模拟：约 1 秒后触发「支付回调」
         <code class="inline">handlePaymentCallback(orderId)</code>
         ，将订单置为已支付。
+      </p>
+      <p v-if="PAYMENT_SIMULATE_FAIL_PROB > 0" class="hint-warn">
+        已开启随机模拟失败（概率 {{ PAYMENT_SIMULATE_FAIL_PROB }}），用于测试失败页与重试。
       </p>
       <p v-if="mockMode" class="hint-warn">
         当前为降级演示模式：会展示支付成功/失败页面，但不会把数据库状态写为 paid。
