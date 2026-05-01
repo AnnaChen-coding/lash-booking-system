@@ -2,11 +2,18 @@ import type { BookingItem } from '@/types/booking'
 import type { ScheduleLine } from '@/data/scheduleConfig'
 import type { PublicBookingBlock } from '@/types/schedule'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
+import { toError } from '@/lib/toError'
 import { isRemoteApi, request } from './client'
 import { bookingsToBlocks, legacyBookedTimesToBlocks } from '@/utils/scheduleAvailability'
 
 // 本地存储的键名
 const STORAGE_KEY = 'bookings'
+
+/** PostgreSQL `integer` / `serial` 上限；超出则不能用 `p_id integer` 类 RPC */
+const MAX_PG_INTEGER = 2_147_483_647
+
+const MSG_ANON_NO_DB_ORDER_ID =
+  '无法取得数据库订单号：匿名直连 insert 后不能 SELECT 回本行，支付会用到错误 id。请在 Supabase SQL Editor 执行 supabase/schema.sql 中的 insert_booking_anon（并授予 anon 执行），然后重新预约。'
 
 // 这个是给 Supabase .select() 用的字段列表。
 const BOOKING_COLUMNS =
@@ -123,7 +130,7 @@ export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
     p_date: date,
   })
   // 如果调用 RPC 函数失败，则抛出错误
-  if (error) throw error
+  if (error) throw toError(error)
   // 如果 data 是数组，则返回 data 转换为 string[]
   // 否则返回空数组
   return Array.isArray(data) ? (data as string[]) : []
@@ -164,14 +171,12 @@ export async function fetchScheduleBlocksForDate(
     if (!error) {
       return parsePublicBookingBlocks(data)
     }
-    const rpcMissing =
-      error.code === 'PGRST202' ||
-      String(error.message ?? '').includes('get_public_booking_blocks_for_date')
+    const rpcMissing = error.code === 'PGRST202'
     if (rpcMissing) {
       const times = await fetchBookedTimesForDate(date)
       return legacyBookedTimesToBlocks(times)
     }
-    throw error
+    throw toError(error)
   }
 
   if (isRemoteApi()) {
@@ -206,7 +211,7 @@ export async function fetchBookings(): Promise<BookingItem[]> {
       // 按 id 排序
       .order('id', { ascending: true })
     // 如果查询失败，则抛出错误
-    if (error) throw error
+    if (error) throw toError(error)
     // 如果查询成功，则返回 data 转换为 BookingItem[]
     // 如果 data 为空，则返回空数组
     return (data ?? []).map((r) => rowToBooking(r as Record<string, unknown>))
@@ -274,7 +279,7 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
         if (isUniqueViolation(error)) {
           throw new Error('该时段刚刚已被预约，请另选时间')
         }
-        throw error
+        throw toError(error)
       }
       if (!data) throw new Error('预约写入后未返回数据')
       // 将数据转换为 BookingItem
@@ -291,9 +296,9 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
       p_status: payload.status,
     })
     if (rpcErr) {
-      const rpcMissing =
-        rpcErr.code === 'PGRST202' ||
-        String(rpcErr.message ?? '').includes('insert_booking_anon')
+      // 仅 PGRST202 表示 PostgREST 在 schema 缓存里找不到该 RPC；勿用 message 包含函数名判断，
+      // 否则权限错误、重载歧义、函数内异常等也会误判为「无 RPC」并走无效的回退 insert。
+      const rpcMissing = rpcErr.code === 'PGRST202'
       if (rpcMissing) {
         const insertWithStatus = (status: BookingItem['status']) =>
           sb.from('bookings').insert({ ...payload, status })
@@ -314,13 +319,13 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
               if (isUniqueViolation(e2)) {
                 throw new Error('该时段刚刚已被预约，请另选时间')
               }
-              throw e2
+              throw toError(e2)
             }
-            return { ...item, status: 'pending' }
+            throw new Error(MSG_ANON_NO_DB_ORDER_ID)
           }
-          throw insErr
+          throw toError(insErr)
         }
-        return item
+        throw new Error(MSG_ANON_NO_DB_ORDER_ID)
       }
       if (isUniqueViolation(rpcErr)) {
         throw new Error('该时段刚刚已被预约，请另选时间')
@@ -339,16 +344,21 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
           if (isUniqueViolation(e2)) {
             throw new Error('该时段刚刚已被预约，请另选时间')
           }
-          throw e2
+          throw toError(e2)
         }
-        return { ...item, status: 'pending' }
+        throw new Error(MSG_ANON_NO_DB_ORDER_ID)
       }
-      throw rpcErr
+      throw toError(rpcErr)
     }
     const id = typeof newId === 'number' ? newId : Number(newId)
-    if (!Number.isFinite(id)) {
+    if (
+      !Number.isFinite(id) ||
+      !Number.isInteger(id) ||
+      id < 1 ||
+      id > MAX_PG_INTEGER
+    ) {
       throw new Error(
-        '预约已提交但无法解析订单号。请确认已在 Supabase 执行 supabase/migration_payment_flow.sql'
+        '预约已提交但返回的订单号无效。请确认 insert_booking_anon 已部署且返回 serial id，并已按 supabase/schema.sql 同步数据库。'
       )
     }
     return { ...item, id }
@@ -377,7 +387,7 @@ export async function deleteBooking(id: number): Promise<void> {
     // 等于 id
     .eq('id', id)
     // 如果删除失败，则抛出错误
-    if (error) throw error
+    if (error) throw toError(error)
     return
   }
   if (isRemoteApi()) {
@@ -404,7 +414,7 @@ export async function patchBookingStatus(
     // 等于 id
     .eq('id', id)
     // 如果更新失败，则抛出错误
-    if (error) throw error
+    if (error) throw toError(error)
     return
   }
   // 如果远程 API 配置了，则调用远程 API

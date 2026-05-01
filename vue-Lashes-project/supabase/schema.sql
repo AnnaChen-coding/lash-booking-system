@@ -42,9 +42,12 @@ grant select, insert, update, delete on public.admin_emails to service_role;
 -- insert into public.admin_emails (email) values ('you@example.com');
 
 -- 容量与区间重叠由 insert_booking_anon（见下）校验；不再对 (date, time) 建全局唯一索引。
--- 若从旧库升级，请执行 supabase/migration_schedule_model.sql 以删除旧索引并更新 RPC。
+-- 从旧库升级：在 SQL Editor 执行本文件全文（含 drop function / drop policy 等），可先备份数据。
 
 -- 匿名可调用：返回某日已被占用的时间段（不含客户姓名电话）
+-- 若历史上建过 (date) 重载，会与 (text) 并存导致 PostgREST 报错；先删掉 date 版。
+drop function if exists public.get_booked_times_for_date(date);
+
 create or replace function public.get_booked_times_for_date(p_date text)
 returns text[]
 language sql
@@ -106,6 +109,9 @@ $$;
 
 revoke all on function public.booking_block_minutes(text) from public;
 grant execute on function public.booking_block_minutes(text) to anon, authenticated;
+
+-- 若历史上建过 (date) 重载，会与 (text) 并存导致 PostgREST 报错；先删掉 date 版。
+drop function if exists public.get_public_booking_blocks_for_date(date);
 
 create or replace function public.get_public_booking_blocks_for_date(p_date text)
 returns jsonb
@@ -218,6 +224,9 @@ create policy "reviews_insert_public"
   with check (true);
 
 -- 匿名插入预约并返回自增 id（支付流程依赖真实 orderId；直连 insert 无法 select）
+-- 若历史上建过 p_date 为 date 的重载，会与 (text) 并存导致 PostgREST 歧义；先删掉 date 版。
+drop function if exists public.insert_booking_anon(text, text, text, date, text, text, text);
+
 create or replace function public.insert_booking_anon(
   p_name text,
   p_phone text,

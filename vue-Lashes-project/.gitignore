@@ -14,6 +14,9 @@ dist-ssr
 coverage
 *.local
 
+# Supabase CLI 本地链接信息（勿提交）
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -38,4 +41,3 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
-text .env.local

@@ -7,6 +7,7 @@ import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { dispatchBookingSuccessNotification } from '@/services/bookingNotification'
 import { ElMessage } from 'element-plus'
 
@@ -21,14 +22,15 @@ const bookingData = ref<BookingFormData>({
   time: '',
   notes: '',
 })
-
+// 是否正在提交 防止重复提交
 const isSubmitting = ref(false)
-
+// 路由实例
 const route = useRoute()
+// 路由实例
 const router = useRouter()
-
+// 预约存储实例
 const bookingStore = useBookingStore()
-
+// 构建冲突消息
 const buildConflictMessage = (date: string, time: string) => {
   const suggestions = bookingStore.recommendAvailableSlots(
     date,
@@ -55,6 +57,7 @@ const handleSubmitBooking = async (value: {
   phone: string
   notes: string
 }) => {
+  // 如果正在提交，则返回
   if (isSubmitting.value) return
   // 1. 合并最后一步的表单数据
   bookingData.value.name = value.name
@@ -70,7 +73,7 @@ const handleSubmitBooking = async (value: {
     alert('Please select a service, date, and time first.')
     return
   }
-
+  // 设置正在提交状态
   isSubmitting.value = true
   try {
     // 冲突校验前强制刷新当前日期缓存，避免把本地缓存当成绝对真相
@@ -80,16 +83,16 @@ const handleSubmitBooking = async (value: {
       bookingData.value.time,
       bookingData.value.service
     )
-
+    // 如果已经预约，则提示用户选择其他时间
     if (alreadyBooked) {
       const selectedTime = bookingData.value.time
       bookingData.value.time = ''
       alert(buildConflictMessage(bookingData.value.date, selectedTime))
       return
     }
-
+    // 如果未预约，则添加预约
     const created = await bookingStore.addBooking({
-      id: Date.now(),
+      id: isSupabaseConfigured() ? 0 : Date.now(),
       name: bookingData.value.name,
       phone: bookingData.value.phone,
       service: bookingData.value.service,
@@ -98,6 +101,7 @@ const handleSubmitBooking = async (value: {
       notes: bookingData.value.notes,
       status: 'pending_payment',
     })
+    // 如果添加预约成功，则发送通知
     const notifyResult = await dispatchBookingSuccessNotification({
       customerName: bookingData.value.name,
       customerEmail: bookingData.value.email,
@@ -108,21 +112,25 @@ const handleSubmitBooking = async (value: {
       notes: bookingData.value.notes,
       booking: created,
     })
+    // 如果发送通知失败，则提示用户
     if (notifyResult.warnings.length) {
       alert(
         `Booking submitted, but notification flow partially failed: ${notifyResult.warnings.join('; ')}. Fallback channel is used automatically.`
       )
     }
+    // 如果预约状态为待支付，则跳转到支付页面
     if (created.status === 'pending_payment') {
       bookingStore.setLastPaymentBooking(created)
       await router.push({
         name: 'bookingPay',
         params: { id: String(created.id) },
       })
-    } else {
+    }
+    // 如果预约状态为已支付，则跳转到支付结果页面
+    else if (created.status === 'paid') {
       bookingStore.setLastPaymentBooking(created)
       alert(
-        'Booking submitted. The database does not support pending payment yet, so you will enter a frontend mock payment page (no DB write-back). Run supabase/migration_payment_flow.sql in Supabase for full flow.'
+        'Booking submitted. The database does not support pending payment yet, so you will enter a frontend mock payment page (no DB write-back). Run supabase/schema.sql in Supabase SQL Editor for full flow.'
       )
       await router.push({
         name: 'bookingPay',
@@ -130,11 +138,19 @@ const handleSubmitBooking = async (value: {
         query: { mock: '1' },
       })
     }
-  } catch (e) {
+    // 如果预约状态为已取消，则提示用户
+    else if (created.status === 'cancelled') {
+      alert('Booking cancelled.')
+      return
+    }
+  }
+  // 如果预约状态为已取消，则提示用户
+  catch (e) {
     const message = e instanceof Error
       ? e.message
       : 'Booking submission failed, please try again later.'
     const isConflict = /已被预约|already booked|另选时间/i.test(message)
+    // 如果预约时间冲突，则提示用户选择其他时间
     if (isConflict) {
       const selectedTime = bookingData.value.time
       await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
@@ -148,6 +164,7 @@ const handleSubmitBooking = async (value: {
     isSubmitting.value = false
   }
 }
+// 组件挂载时，如果从查询参数中获取到服务，则设置服务
 onMounted(() => {
   const serviceFromQuery = route.query.service
 

@@ -71,7 +71,7 @@ npm run dev
 ### Supabase（推荐，真实云端数据库）
 
 1. 在 [Supabase](https://supabase.com) 新建项目，打开 **Project Settings → API**，复制 **Project URL** 与 **anon public** 密钥。
-2. 在 **SQL Editor** 中执行 **`supabase/schema.sql` 全文**（含 `admin_emails`、唯一约束、RPC、RLS、**待支付 / 模拟支付回调 RPC** 等）。若你曾执行过「所有人可读写」的旧版策略，可先运行 `supabase/migrate-from-open-policies.sql`，再执行 `schema.sql` 中从「唯一索引 / 函数 / RLS」起的部分，或整份 `schema.sql`（`DROP POLICY IF EXISTS` 可重复执行）。若已有数据库仅需升级白名单与策略，可执行 **`supabase/migrate-admin-emails.sql`**（并自行补上 `bookings_insert_public` 等缺失策略时，以 `schema.sql` 为准）。**若库是更早版本、缺少支付相关字段与 RPC**，可在 SQL Editor 追加执行 **`supabase/migration_payment_flow.sql`**（与 `schema.sql` 中相关段落等价，用于增量升级）。
+2. 在 **SQL Editor** 中执行 **`supabase/schema.sql` 全文**（含 `admin_emails`、唯一约束、RPC、RLS、**待支付 / 模拟支付回调 RPC**、排班与容量校验等）。从旧库升级时同样以本文件为准（内含 `DROP POLICY IF EXISTS` / `drop function if exists`，可按需先备份数据后执行）。
 3. **登记管理员邮箱**（必须，否则无法进后台）：在 SQL Editor 执行，把邮箱改成你的：
    `insert into public.admin_emails (email) values ('you@example.com');`
    可插入多行以增加多个管理员。
@@ -155,11 +155,9 @@ src/
   utils/         # 工具函数
   views/         # 页面级视图（含 BookingPayment* 支付演示页）
 supabase/
-  schema.sql                     # 建表、admin_emails、RPC、RLS（含支付相关）
-  migration_payment_flow.sql     # 旧库增量：状态枚举、匿名插入 id、支付确认 RPC
-  functions/booking-notify/      # Edge Function：Resend 邮件通知（可选）
-  migrate-from-open-policies.sql # 从旧版「全开」策略迁移时可选
-  migrate-admin-emails.sql       # 已有库时仅升级管理员白名单与预约 RLS
+  schema.sql                # 唯一维护的库结构脚本（表、RPC、RLS、支付与排班等）
+  functions/booking-notify/ # Edge Function：Resend 邮件通知（可选）
+  functions/service-recommend/
 ```
 
 ## 开发建议
