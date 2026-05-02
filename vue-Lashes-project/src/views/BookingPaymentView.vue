@@ -20,38 +20,59 @@ const PAYMENT_SIMULATE_FAIL_PROB = Math.min(
   1,
   Math.max(0, Number(import.meta.env.VITE_PAYMENT_SIMULATE_FAIL_PROB) || 0)
 )
+// 模拟定时器
 const simulateTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-
+// 计算预约
 const booking = computed((): BookingItem | null => {
+  // 获取订单ID
   const id = orderId.value
+  // 如果订单ID不是数字，则返回null
   if (!Number.isFinite(id)) return null
+  // 从预约列表中查找订单ID
   const fromList = bookingStore.bookings.find((b) => b.id === id)
+  // 如果找到，则返回预约
   if (fromList) return fromList
+  // 从最后一笔支付预约中查找订单ID
   const snap = bookingStore.lastPaymentBooking
+  // 如果找到，则返回最后一笔支付预约
   if (snap?.id === id) return snap
   return null
 })
 
+// 卸载时清除定时器
 onUnmounted(() => {
+  // 如果模拟定时器存在，则清除定时器
   if (simulateTimer.value) clearTimeout(simulateTimer.value)
 })
 
+// 支付渠道
 async function onPayChannel(channel: 'alipay' | 'wechat') {
+  // 如果订单ID不是数字，或者正在支付，则返回
   if (!Number.isFinite(orderId.value) || paying.value) return
+  // 获取预约
   const b = booking.value
+  // 如果预约不存在，则返回
   if (!b) return
+  // 如果预约状态不是待支付，或者模拟模式，则返回
   const payable = b.status === 'pending_payment' || mockMode.value
   if (!payable) return
 
+  // 设置支付渠道
   methodChosen.value = channel
+  // 设置正在支付状态
   paying.value = true
 
+  // 设置模拟定时器
   simulateTimer.value = setTimeout(async () => {
+    // 清除模拟定时器
     simulateTimer.value = null
     try {
+      // 随机模拟失败
       const failed = Math.random() < PAYMENT_SIMULATE_FAIL_PROB
+      // 如果失败，则跳转到失败页
       if (failed) {
         paying.value = false
+        // 跳转到失败页
         await router.push({
           name: 'bookingPayResult',
           params: { id: String(orderId.value) },
@@ -60,6 +81,7 @@ async function onPayChannel(channel: 'alipay' | 'wechat') {
         return
       }
 
+      // 如果模拟模式，则设置预约状态为已支付
       if (mockMode.value) {
         // 旧数据库不支持 payment RPC 时，仅做前端演示。
         bookingStore.setLastPaymentBooking({
@@ -67,14 +89,17 @@ async function onPayChannel(channel: 'alipay' | 'wechat') {
           status: 'paid',
         })
       } else {
+        // 调用支付回调
         await handlePaymentCallback(orderId.value)
         bookingStore.setLastPaymentBooking({
           ...b,
           status: 'paid',
         })
+        // 重新加载预约列表
         await bookingStore.hydrateBookings()
       }
       paying.value = false
+      // 跳转到支付结果页
       await router.push({
         name: 'bookingPayResult',
         params: { id: String(orderId.value) },

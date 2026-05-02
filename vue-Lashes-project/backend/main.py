@@ -17,7 +17,13 @@ from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
 from models import Booking
-from schemas import BookingCreate, BookingOut, BookingStatusPatch
+from schemas import (
+    BookingCreate,
+    BookingNotifyOut,
+    BookingNotifyPayload,
+    BookingOut,
+    BookingStatusPatch,
+)
 
 app = FastAPI(title="Lashes Booking API", version="0.1.0")
 
@@ -120,3 +126,24 @@ def patch_booking_status(
     db.commit()
     db.refresh(booking)
     return booking
+
+
+@app.post("/notifications/booking-success", response_model=BookingNotifyOut)
+def notify_booking_success(payload: BookingNotifyPayload):
+    """
+    预约成功通知入口（最小可联调实现）。
+    当前仅记录日志并返回成功，后续可接入真实邮件/短信通道。
+    """
+    print(
+        "[booking-notify:fastapi]",
+        {
+            "booking_id": payload.booking.id,
+            "customer_name": payload.customerName,
+            "customer_phone": payload.customerPhone,
+            "customer_email": payload.customerEmail,
+            "service": payload.service,
+            "date": payload.date,
+            "time": payload.time,
+        },
+    )
+    return BookingNotifyOut()

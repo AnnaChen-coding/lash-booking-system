@@ -2,6 +2,7 @@ import { request, isRemoteApi } from '@/api/client'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import type { BookingItem } from '@/types/booking'
 
+// 预约成功通知 payload
 export interface BookingNotifyPayload {
   customerName: string
   customerPhone: string
@@ -13,6 +14,7 @@ export interface BookingNotifyPayload {
   booking: BookingItem
 }
 
+// 预约成功通知结果
 export interface BookingNotifyResult {
   provider: 'remote_api' | 'supabase_function' | 'mock'
   usedCustomerChannel: 'email' | 'sms_mock'
@@ -20,8 +22,9 @@ export interface BookingNotifyResult {
   warnings: string[]
 }
 
+// 模拟管理员短信
 const MOCK_ADMIN_SMS = '店长手机（模拟）'
-
+// 解析管理员邮箱
 function parseAdminEmails(): string[] {
   const raw = import.meta.env.VITE_BOOKING_ADMIN_EMAILS
   if (!raw || typeof raw !== 'string') return []
@@ -30,7 +33,7 @@ function parseAdminEmails(): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
 }
-
+// 模拟通知
 function mockNotify(payload: BookingNotifyPayload, warnings: string[]): BookingNotifyResult {
   const adminEmails = parseAdminEmails()
   const customerEmail = payload.customerEmail?.trim()
@@ -61,12 +64,13 @@ function mockNotify(payload: BookingNotifyPayload, warnings: string[]): BookingN
     warnings,
   }
 }
-
+// 分发预约成功通知
 export async function dispatchBookingSuccessNotification(
   payload: BookingNotifyPayload
 ): Promise<BookingNotifyResult> {
   const warnings: string[] = []
 
+  // 如果配置了远程 API，则调用远程 API
   if (isRemoteApi()) {
     try {
       await request('POST', '/notifications/booking-success', {
@@ -80,10 +84,12 @@ export async function dispatchBookingSuccessNotification(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      // 添加警告
       warnings.push(`远程通知接口失败：${message}`)
     }
   }
 
+  // 如果配置了 Supabase，则调用 Supabase 通知函数
   if (isSupabaseConfigured()) {
     try {
       const sb = getSupabase()
@@ -104,5 +110,6 @@ export async function dispatchBookingSuccessNotification(
     }
   }
 
+  // 如果配置了远程 API 和 Supabase，则返回 mock 通知
   return mockNotify(payload, warnings)
 }

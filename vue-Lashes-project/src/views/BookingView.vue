@@ -146,6 +146,8 @@ const handleSubmitBooking = async (value: {
   }
   // 如果预约状态为已取消，则提示用户
   catch (e) {
+    // 如果错误是实例，则获取错误消息
+    // 否则返回默认消息
     const message = e instanceof Error
       ? e.message
       : 'Booking submission failed, please try again later.'
@@ -153,9 +155,13 @@ const handleSubmitBooking = async (value: {
     // 如果预约时间冲突，则提示用户选择其他时间
     if (isConflict) {
       const selectedTime = bookingData.value.time
+      // 强制刷新当前日期缓存，避免把本地缓存当成绝对真相
       await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
+      // 构建冲突消息 并返回最新消息
       const latestMessage = buildConflictMessage(bookingData.value.date, selectedTime)
+      // 清空选中的时间
       bookingData.value.time = ''
+      // 提示用户选择其他时间
       alert(latestMessage)
       return
     }
