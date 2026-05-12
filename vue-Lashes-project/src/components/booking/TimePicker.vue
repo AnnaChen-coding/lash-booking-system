@@ -30,15 +30,16 @@ let timerId: number | null = null
 const needsRemoteSlots = computed(
   () => isSupabaseConfigured() && !auth.canAccessAdmin
 )
-
+// 计算上次更新时间
 const lastRefreshedText = computed(() => {
   if (!needsRemoteSlots.value) {
-    return 'Local schedule preview (connect Supabase for live availability).'
+    return '本地预约时间预览（连接 Supabase 以获取实时可用时间）。'
   }
-  if (!lastRefreshedAt.value) return 'Syncing available slots…'
-  return `Last updated: ${lastRefreshedAt.value.toLocaleTimeString()}`
+  if (!lastRefreshedAt.value) return '同步可用时段…'
+  return `上次更新时间：${lastRefreshedAt.value.toLocaleTimeString()}`
 })
 
+// 计算是否锁定时段加载
 const slotsLoadLocked = computed(
   () =>
     Boolean(selectedDate.value) &&
@@ -46,6 +47,7 @@ const slotsLoadLocked = computed(
     isRefreshing.value
 )
 
+// 计算是否可以刷新已占时段
 const canRefreshTakenSlots = () =>
   Boolean(selectedDate.value) && isSupabaseConfigured() && !auth.canAccessAdmin
 
@@ -70,14 +72,14 @@ const refreshSlotsForSelectedDate = async (force = false) => {
     isRefreshing.value = false
   }
 }
-
+// 启动自动刷新
 const startAutoRefresh = () => {
   if (timerId !== null) return
   timerId = window.setInterval(() => {
     void refreshSlotsForSelectedDate(true)
   }, AUTO_REFRESH_MS)
 }
-
+// 停止自动刷新
 const stopAutoRefresh = () => {
   if (timerId === null) return
   window.clearInterval(timerId)
@@ -137,11 +139,12 @@ const handleSelectTime = (time: string) => {
     time,
   })
 }
-
+// 组件挂载时启动自动刷新
 onMounted(() => {
   startAutoRefresh()
 })
 
+// 组件卸载时停止自动刷新
 onBeforeUnmount(() => {
   stopAutoRefresh()
 })

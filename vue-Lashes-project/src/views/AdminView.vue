@@ -8,7 +8,7 @@ import { ref, computed } from 'vue'
 
 const bookingStore = useBookingStore()
 const filter = ref('all')
-
+// 计算过滤后的预约列表
 const filteredBookings = computed(() => {
   if (filter.value === 'all') {
     return bookingStore.bookings

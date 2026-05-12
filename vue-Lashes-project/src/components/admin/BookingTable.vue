@@ -1,19 +1,29 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { useBookingStore } from '@/stores/booking'
 import type { BookingItem } from '@/types/booking'
+import { toError } from '@/lib/toError'
 
 const bookingStore = useBookingStore()
 
 const handleDelete = (id: number) => {
   void bookingStore.removeBooking(id)
 }
+
 const props = defineProps<{
   bookings: BookingItem[]
 }>()
 
-const handleStatusChange = (id: number, event: Event) => {
+const handleStatusChange = async (booking: BookingItem, event: Event) => {
   const target = event.target as HTMLSelectElement
-  void bookingStore.updateStatus(id, target.value as BookingItem['status'])
+  const previous = booking.status
+  const next = target.value as BookingItem['status']
+  try {
+    await bookingStore.updateStatus(booking.id, next)
+  } catch (e) {
+    target.value = previous
+    ElMessage.error(toError(e).message)
+  }
 }
 </script>
 
@@ -38,7 +48,7 @@ const handleStatusChange = (id: number, event: Event) => {
         <select
           :value="booking.status"
           :disabled="bookingStore.bookingsLoading"
-          @change="handleStatusChange(booking.id, $event)"
+          @change="handleStatusChange(booking, $event)"
         >
           <option value="pending">Pending</option>
           <option value="pending_payment">Pending payment</option>

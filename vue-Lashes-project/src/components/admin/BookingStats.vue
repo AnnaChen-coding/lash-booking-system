@@ -4,20 +4,20 @@ import { useBookingStore } from '@/stores/booking'
 import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
 
 const bookingStore = useBookingStore()
-
+// 将日期字符串转换为日期对象
 const parseBookingDate = (dateText: string) => {
   if (!dateText) return null
   const parsed = new Date(`${dateText}T00:00:00`)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
-
+// 将日期对象转换为日期字符串
 const formatDateKey = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
-
+// 计算规范化预约数据（将日期字符串转换为日期对象）
 const normalizedBookings = computed(() => {
   return bookingStore.bookings
     .map((booking) => ({
@@ -26,14 +26,14 @@ const normalizedBookings = computed(() => {
     }))
     .filter((booking) => booking.bookingDate)
 })
-
+// 计算今日预约数
 const todayCount = computed(() => {
   const today = formatDateKey(new Date())
   return normalizedBookings.value.filter(
     (booking) => formatDateKey(booking.bookingDate as Date) === today
   ).length
 })
-
+// 计算周开始日期
 const weekStartDate = computed(() => {
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -41,7 +41,7 @@ const weekStartDate = computed(() => {
   start.setDate(start.getDate() - mondayOffset)
   return start
 })
-
+// 计算本周系列
 const currentWeekSeries = computed(() => {
   const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   const dayKeys = Array.from({ length: 7 }, (_, index) => {

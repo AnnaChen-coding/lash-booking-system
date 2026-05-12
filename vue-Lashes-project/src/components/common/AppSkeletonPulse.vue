@@ -6,6 +6,7 @@ withDefaults(
     height?: string
     radius?: string
   }>(),
+  // 默认值
   {
     width: '100%',
     height: '14px',

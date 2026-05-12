@@ -330,3 +330,35 @@ $$;
 revoke all on function public.confirm_booking_payment_simulation(integer) from public;
 grant execute on function public.confirm_booking_payment_simulation(integer)
   to anon, authenticated;
+
+-- 后台改订单状态：与直连 UPDATE + RETURNING 相比，避免 PostgREST/RLS 在少数环境下「已写入但返回 0 行」的歧义
+create or replace function public.admin_patch_booking_status(
+  p_id integer,
+  p_status text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_updated integer;
+begin
+  if not public.is_booking_admin() then
+    raise exception 'not allowed'
+      using errcode = '42501';
+  end if;
+
+  update public.bookings
+  set status = p_status
+  where id = p_id;
+
+  get diagnostics v_updated = row_count;
+  if v_updated = 0 then
+    raise exception 'booking id not found';
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_patch_booking_status(integer, text) from public;
+grant execute on function public.admin_patch_booking_status(integer, text) to authenticated;

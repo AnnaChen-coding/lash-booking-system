@@ -135,23 +135,35 @@ export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
   // 否则返回空数组
   return Array.isArray(data) ? (data as string[]) : []
 }
-
+// 将数据转换为 PublicBookingBlock[] 数组
 function parsePublicBookingBlocks(data: unknown): PublicBookingBlock[] {
   if (!Array.isArray(data)) return []
+  // 声明一个空数组
   const out: PublicBookingBlock[] = []
+  // 遍历 data 数组
   for (const row of data) {
+    // 如果 row 不是对象，或者为 null，则跳过
     if (typeof row !== 'object' || row === null) continue
+    // 将 row 转换为 Record<string, unknown>
     const r = row as Record<string, unknown>
+    // 获取 line
     const line = r.line
+    // 获取 time
     const time = r.time
+    // 获取 blockMinutes
     const blockMinutes = r.blockMinutes
+    // 如果 line 不是 nails 或 lashes，则跳过
     if (line !== 'nails' && line !== 'lashes') continue
+    // 如果 time 不是字符串，则跳过
     if (typeof time !== 'string') continue
+    // 将 blockMinutes 转换为数字
     const bm =
       typeof blockMinutes === 'number'
         ? blockMinutes
         : Number(blockMinutes)
+    // 如果 blockMinutes 不是数字，则跳过
     if (!Number.isFinite(bm)) continue
+    // 将 line 转换为 ScheduleLine
     out.push({ line: line as ScheduleLine, time, blockMinutes: bm })
   }
   return out
@@ -406,15 +418,29 @@ export async function patchBookingStatus(
   // 如果 Supabase 配置了，则调用 Supabase 的 API
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
-    const { error } = await sb
-    // 指定表名
-    .from('bookings')
-    // 更新
-    .update({ status })
-    // 等于 id
-    .eq('id', id)
-    // 如果更新失败，则抛出错误
+    // 优先走 RPC：服务端校验 is_booking_admin() 并校验实际更新行数（与「能进后台」同源）
+    const { error: rpcError } = await sb.rpc('admin_patch_booking_status', {
+      p_id: id,
+      p_status: status,
+    })
+    if (!rpcError) return
+
+    const rpcMissing = rpcError.code === 'PGRST202'
+    if (!rpcMissing) throw toError(rpcError)
+
+    // 尚未在 Supabase 执行 schema.sql 中该函数时回退；仍用 select 校验是否真写入
+    const { data, error } = await sb
+      .from('bookings')
+      .update({ status })
+      .eq('id', id)
+      .select(BOOKING_COLUMNS)
+      .maybeSingle()
     if (error) throw toError(error)
+    if (!data) {
+      throw new Error(
+        '未能更新预约状态：未更新任何一行。请在 Supabase SQL Editor 执行项目内 supabase/schema.sql 中的 admin_patch_booking_status，并确认订单 id 在表中存在。'
+      )
+    }
     return
   }
   // 如果远程 API 配置了，则调用远程 API
