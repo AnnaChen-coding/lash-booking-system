@@ -1,4 +1,11 @@
-export { ApiError, getApiBaseUrl, isRemoteApi, request } from './client'
+export {
+  ApiError,
+  getApiBaseUrl,
+  isRemoteApi,
+  isRestApiPreferred,
+  registerAccessTokenGetter,
+  request,
+} from './client'
 export {
   createBooking,
   deleteBooking,

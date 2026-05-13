@@ -1,11 +1,13 @@
 """
 Pydantic 数据模型：约束请求体和响应体结构。
+
+BookingOut 的 JSON 字段与前端 src/types/booking.ts 的 BookingItem 一致：
+id, name, phone, service, date, time, notes, status（不含 created_at）。
 """
 
-from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 BookingStatus = Literal[
     "pending",
@@ -29,15 +31,26 @@ class BookingBase(BaseModel):
 class BookingCreate(BookingBase):
     """
     创建预约请求体。当前与 BookingBase 一致，后续可独立扩展。
+    前端可能附带临时 id 等字段，一律忽略。
     """
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class BookingOut(BookingBase):
     id: int
-    created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BookedTimesOut(BaseModel):
+    """
+    与前端匿名占档约定一致：某日已占用开始时间列表（不含客户信息）。
+    语义对齐 supabase/schema.sql 中 get_booked_times_for_date。
+    """
+
+    date: str
+    times: list[str]
 
 
 class BookingStatusPatch(BaseModel):
@@ -71,3 +84,18 @@ class BookingNotifyOut(BaseModel):
     ok: bool = True
     provider: str = "fastapi_mock"
     message: str = "Booking notification accepted."
+
+
+class AuthLogin(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=1, max_length=500)
+
+
+class AuthTokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class AuthMeOut(BaseModel):
+    email: str
+    isAdmin: bool

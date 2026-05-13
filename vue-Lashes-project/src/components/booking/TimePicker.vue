@@ -2,14 +2,19 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { useRemoteBookingAvailability } from '@/lib/bookingRemotePolicy'
 import { useAuthStore } from '@/stores/auth'
 import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
 
-const props = defineProps<{
-  /** 当前所选服务名（与 `services` 一致），用于按线路/技师数算可约时段 */
-  service: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 当前所选服务名（与 `services` 一致），用于按线路/技师数算可约时段 */
+    service: string
+    /** 与预约页汇总同步：父级清空时间（如冲突后）时清除本组件内选中态 */
+    bookingTime?: string
+  }>(),
+  { bookingTime: '' }
+)
 
 // --- 事件定义 ---
 const emit = defineEmits<{
@@ -28,12 +33,12 @@ const AUTO_REFRESH_MS = 15000
 let timerId: number | null = null
 
 const needsRemoteSlots = computed(
-  () => isSupabaseConfigured() && !auth.canAccessAdmin
+  () => useRemoteBookingAvailability() && !auth.canAccessAdmin
 )
 // 计算上次更新时间
 const lastRefreshedText = computed(() => {
   if (!needsRemoteSlots.value) {
-    return '本地预约时间预览（连接 Supabase 以获取实时可用时间）。'
+    return '本地预约时间预览（连接 Supabase 或开启 REST API 以获取实时可用时间）。'
   }
   if (!lastRefreshedAt.value) return '同步可用时段…'
   return `上次更新时间：${lastRefreshedAt.value.toLocaleTimeString()}`
@@ -49,7 +54,9 @@ const slotsLoadLocked = computed(
 
 // 计算是否可以刷新已占时段
 const canRefreshTakenSlots = () =>
-  Boolean(selectedDate.value) && isSupabaseConfigured() && !auth.canAccessAdmin
+  Boolean(selectedDate.value) &&
+  useRemoteBookingAvailability() &&
+  !auth.canAccessAdmin
 
 const refreshSlotsForSelectedDate = async (force = false) => {
   if (!canRefreshTakenSlots() || !selectedDate.value) return
@@ -99,13 +106,23 @@ watch(
         emit('select-time', { date: d, time: '' })
       }
     }
-    // 如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
-    if (!d || !isSupabaseConfigured() || auth.canAccessAdmin) return
+    // 无 Supabase/REST 或管理员：不拉远程占档
+    if (!d || !useRemoteBookingAvailability() || auth.canAccessAdmin)
+      return
     // 否则调用 Store 的方法，加载已占时段
     void refreshSlotsForSelectedDate(true)
   },
   // 立即执行
   { immediate: true }
+)
+
+watch(
+  () => props.bookingTime,
+  (t) => {
+    if (t !== '') return
+    if (!selectedTime.value) return
+    selectedTime.value = ''
+  }
 )
 
 watch(

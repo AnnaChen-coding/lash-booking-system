@@ -1,4 +1,5 @@
 import { patchBookingStatus } from '@/api/bookings'
+import { isRemoteApi, isRestApiPreferred, request } from '@/api/client'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import { toError } from '@/lib/toError'
 
@@ -6,11 +7,11 @@ import { toError } from '@/lib/toError'
 const MAX_PG_INTEGER = 2_147_483_647
 
 /**
- * 模拟支付渠道异步通知：后端校验订单后把状态改为已支付。
- * Supabase 下匿名用户无 UPDATE 权限，通过 security definer RPC 更新。
+ * 模拟支付渠道异步通知：将订单置为已支付。
+ * REST 优先：`POST /bookings/{id}/confirm-payment`（匿名，仅 pending_payment → paid）。
+ * 回落：Supabase RPC `confirm_booking_payment_simulation`；再否则 `patchBookingStatus`（本地等）。
  */
 export async function handlePaymentCallback(orderId: number): Promise<void> {
-  // 如果订单ID不是整数，或者小于1，或者大于PostgreSQL `integer` 上限，则抛出错误
   if (
     !Number.isInteger(orderId) ||
     orderId < 1 ||
@@ -21,31 +22,36 @@ export async function handlePaymentCallback(orderId: number): Promise<void> {
     )
   }
 
-  // 如果配置了 Supabase，则调用 Supabase 确认支付回调
+  if (isRestApiPreferred() && isRemoteApi()) {
+    try {
+      await request<unknown>(
+        'POST',
+        `/bookings/${orderId}/confirm-payment`,
+        {}
+      )
+      return
+    } catch {
+      /* 回落 Supabase / patchBookingStatus */
+    }
+  }
+
   if (isSupabaseConfigured()) {
-    // 获取 Supabase 实例
     const sb = getSupabase()
-    // 调用 Supabase 确认支付回调
     const { error } = await sb.rpc('confirm_booking_payment_simulation', {
       p_id: orderId,
     })
-    // 如果错误，则抛出错误
     if (error) {
-      // 如果错误是RPC缺失，则抛出错误
       const rpcMissing =
         error.code === 'PGRST202' ||
         String(error.message ?? '').includes('confirm_booking_payment_simulation')
-      // 如果错误是RPC缺失，则抛出错误
       if (rpcMissing) {
-        // 抛出错误
         throw new Error(
           '支付回调需要数据库 RPC。请在 Supabase SQL Editor 执行 supabase/schema.sql 中与支付相关的段落（或全文）。'
         )
-        }
-        throw toError(error)
+      }
+      throw toError(error)
     }
     return
   }
-  // 更新预约状态为已支付
   await patchBookingStatus(orderId, 'paid')
 }

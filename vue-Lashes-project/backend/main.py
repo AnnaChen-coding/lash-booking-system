@@ -1,16 +1,23 @@
 """
 FastAPI 应用入口。
 
-提供最小预约 REST API：
-- GET /bookings
+公开（匿名）：
+- GET /booked-times?date=
 - POST /bookings
-- DELETE /bookings/{id}
+- POST /auth/login
+- GET /auth/me（需 Bearer，返回是否管理员）
+- POST /bookings/{id}/confirm-payment（模拟支付：pending_payment → paid，无鉴权）
+- POST /notifications/booking-success
+
+需管理员 Bearer：
+- GET /bookings
 - PATCH /bookings/{id}/status
+- DELETE /bookings/{id}
 """
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -18,16 +25,25 @@ from sqlalchemy.orm import Session
 from database import Base, engine, get_db
 from models import Booking
 from schemas import (
+    AuthLogin,
+    AuthMeOut,
+    AuthTokenOut,
+    BookedTimesOut,
     BookingCreate,
     BookingNotifyOut,
     BookingNotifyPayload,
     BookingOut,
     BookingStatusPatch,
 )
+from security import (
+    create_fastapi_access_token,
+    get_email_from_bearer_token,
+    is_admin_email,
+    verify_admin_password,
+)
 
 app = FastAPI(title="Lashes Booking API", version="0.1.0")
 
-# 本地开发 CORS：允许 Vue Vite 默认地址访问。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -40,28 +56,117 @@ app.add_middleware(
 )
 
 
+def _parse_bearer(authorization: Optional[str]) -> Optional[str]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    return authorization.split(" ", 1)[1].strip() or None
+
+
+def require_admin(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db),
+) -> str:
+    token = _parse_bearer(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
+    email = get_email_from_bearer_token(token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    if not is_admin_email(db, email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return email
+
+
 @app.on_event("startup")
 def on_startup() -> None:
-    """
-    启动时自动建表，确保首次运行即可使用。
-    """
     Base.metadata.create_all(bind=engine)
 
 
+@app.post("/auth/login", response_model=AuthTokenOut)
+def auth_login(payload: AuthLogin, db: Session = Depends(get_db)):
+    """
+    管理员登录：邮箱须在 admin_emails 表或 ADMIN_EMAILS 环境变量中；
+    口令为服务端 FASTAPI_ADMIN_PASSWORD。
+    """
+    if not is_admin_email(db, payload.email):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    if not verify_admin_password(payload.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    try:
+        token = create_fastapi_access_token(payload.email)
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
+    return AuthTokenOut(access_token=token)
+
+
+@app.get("/auth/me", response_model=AuthMeOut)
+def auth_me(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db),
+):
+    token = _parse_bearer(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+    email = get_email_from_bearer_token(token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    return AuthMeOut(email=email, isAdmin=is_admin_email(db, email))
+
+
 @app.get("/bookings", response_model=List[BookingOut])
-def get_bookings(db: Session = Depends(get_db)):
-    """
-    获取所有预约，按 id 倒序（最新在前）。
-    """
-    return db.query(Booking).order_by(Booking.id.desc()).all()
+def get_bookings(
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return db.query(Booking).order_by(Booking.id.asc()).all()
+
+
+@app.get("/booked-times", response_model=BookedTimesOut)
+def get_booked_times(
+    date: str = Query(
+        ...,
+        min_length=1,
+        max_length=32,
+        description="与 bookings.date 一致，通常为 YYYY-MM-DD",
+    ),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(Booking.time)
+        .filter(Booking.date == date, Booking.status != "cancelled")
+        .order_by(Booking.time.asc())
+        .all()
+    )
+    times = [r[0] for r in rows]
+    return BookedTimesOut(date=date, times=times)
 
 
 @app.post("/bookings", response_model=BookingOut, status_code=status.HTTP_201_CREATED)
 def create_booking(payload: BookingCreate, db: Session = Depends(get_db)):
-    """
-    创建预约，并做时间冲突校验：
-    同一天同一时间，若已有非 cancelled 预约，则拒绝创建。
-    """
     conflict = (
         db.query(Booking)
         .filter(
@@ -76,7 +181,7 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)):
     if conflict:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This time slot is already booked.",
+            detail="This time slot has already been booked.",
         )
 
     booking = Booking(
@@ -94,13 +199,38 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)):
     return booking
 
 
-@app.delete("/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_booking(
-    booking_id: int = Path(..., gt=0), db: Session = Depends(get_db)
+@app.post(
+    "/bookings/{booking_id}/confirm-payment",
+    response_model=BookingOut,
+)
+def confirm_payment_simulation(
+    booking_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
 ):
     """
-    删除预约，不存在时返回 404。
+    模拟支付回调：匿名将 pending_payment 置为 paid（与 Supabase RPC 语义对齐）。
+    不提供鉴权，仅允许该状态迁移，避免任意改单。
     """
+    booking = db.get(Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    if booking.status != "pending_payment":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Order is not in pending_payment status.",
+        )
+    booking.status = "paid"
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+@app.delete("/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_booking(
+    booking_id: int = Path(..., gt=0),
+    _admin: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     booking = db.get(Booking, booking_id)
     if not booking:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
@@ -113,11 +243,9 @@ def delete_booking(
 def patch_booking_status(
     payload: BookingStatusPatch,
     booking_id: int = Path(..., gt=0),
+    _admin: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """
-    更新预约状态（如 confirmed / cancelled）。
-    """
     booking = db.get(Booking, booking_id)
     if not booking:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
@@ -130,10 +258,6 @@ def patch_booking_status(
 
 @app.post("/notifications/booking-success", response_model=BookingNotifyOut)
 def notify_booking_success(payload: BookingNotifyPayload):
-    """
-    预约成功通知入口（最小可联调实现）。
-    当前仅记录日志并返回成功，后续可接入真实邮件/短信通道。
-    """
     print(
         "[booking-notify:fastapi]",
         {

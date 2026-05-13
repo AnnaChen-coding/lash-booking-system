@@ -3,12 +3,16 @@ import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore, MOCK_LOGIN_PASSWORD } from '@/stores/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { isRestApiPreferred, isRemoteApi } from '@/api/client'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
 const useCloudAuth = computed(() => isSupabaseConfigured())
+const useRestAdminAuth = computed(
+  () => isRestApiPreferred() && isRemoteApi()
+)
 
 const form = reactive({
   email: '',
@@ -22,7 +26,17 @@ const handleSubmit = async () => {
   error.value = ''
   loading.value = true
   try {
-    if (useCloudAuth.value) {
+    if (useRestAdminAuth.value) {
+      if (!form.email.trim() || !form.password) {
+        error.value = '请填写邮箱与密码'
+        return
+      }
+      const r = await auth.loginWithRest(form.email, form.password)
+      if (r.ok === false) {
+        error.value = r.message
+        return
+      }
+    } else if (useCloudAuth.value) {
       if (!form.email.trim() || !form.password) {
         error.value = '请填写邮箱与密码'
         return
@@ -55,9 +69,24 @@ const handleSubmit = async () => {
   <section class="login-page">
     <div class="login-card">
       <h1 class="title">
-        {{ useCloudAuth ? '管理员登录' : '管理员登录（Mock）' }}
+        {{
+          useRestAdminAuth
+            ? '管理员登录（FastAPI）'
+            : useCloudAuth
+              ? '管理员登录'
+              : '管理员登录（Mock）'
+        }}
       </h1>
-      <p v-if="!useCloudAuth" class="hint">
+      <p v-if="useRestAdminAuth" class="hint">
+        邮箱须在数据库
+        <strong>admin_emails</strong>
+        或后端环境变量
+        <strong>ADMIN_EMAILS</strong>
+        中；口令由服务端
+        <strong>FASTAPI_ADMIN_PASSWORD</strong>
+        配置。
+      </p>
+      <p v-else-if="!useCloudAuth" class="hint">
         演示口令：<code>{{ MOCK_LOGIN_PASSWORD }}</code>
       </p>
       <p v-else class="hint">
@@ -68,7 +97,7 @@ const handleSubmit = async () => {
         创建同邮箱账号后登录。未在白名单的账号无法进入后台。
       </p>
       <form class="form" @submit.prevent="handleSubmit">
-        <label v-if="useCloudAuth" class="label">
+        <label v-if="useCloudAuth || useRestAdminAuth" class="label">
           邮箱
           <input
             v-model="form.email"
@@ -79,13 +108,13 @@ const handleSubmit = async () => {
           />
         </label>
         <label class="label">
-          {{ useCloudAuth ? '密码' : '口令' }}
+          {{ useCloudAuth || useRestAdminAuth ? '密码' : '口令' }}
           <input
             v-model="form.password"
             type="password"
             class="input"
             autocomplete="current-password"
-            :placeholder="useCloudAuth ? '密码' : '输入 demo'"
+            :placeholder="useCloudAuth || useRestAdminAuth ? '密码' : '输入 demo'"
           />
         </label>
         <p v-if="error" class="error">

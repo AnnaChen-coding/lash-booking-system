@@ -3,6 +3,8 @@
 import 'vue-router'
 
 interface ImportMetaEnv {
+  /** 为 `true` 且已配置 `VITE_API_BASE_URL` 时，预约接口优先请求 FastAPI */
+  readonly VITE_USE_REST_API?: string
   readonly VITE_API_BASE_URL?: string
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string

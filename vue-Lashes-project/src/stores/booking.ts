@@ -9,7 +9,7 @@ import {
   fetchScheduleBlocksForDate,
   patchBookingStatus,
 } from '@/api/bookings'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { useRemoteBookingAvailability } from '@/lib/bookingRemotePolicy'
 import { useAuthStore } from '@/stores/auth'
 import {
   bookingToPublicBlock,
@@ -31,8 +31,9 @@ export const useBookingStore = defineStore('booking', () => {
   const hydrateBookings = async () => {
     bookingsLoading.value = true
     try {
-      // 如果配置了 Supabase 并且不是管理员，则清空 bookings
-      if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
+      const skipFullList =
+        !useAuthStore().canAccessAdmin && useRemoteBookingAvailability()
+      if (skipFullList) {
         bookings.value = []
         return
       }
@@ -47,8 +48,8 @@ export const useBookingStore = defineStore('booking', () => {
     date: string,
     options?: { force?: boolean }
   ) => {
-    // 如果日期为空或未配置 Supabase，则直接返回
-    if (!date || !isSupabaseConfigured()) return
+    // 匿名走占档缓存（Supabase RPC 或 REST GET /booked-times）；无远程配置则跳过
+    if (!date || !useRemoteBookingAvailability()) return
     // 如果管理员，则直接返回
     if (useAuthStore().canAccessAdmin) return
     // 已有缓存且非强制刷新，直接命中缓存
@@ -75,7 +76,7 @@ export const useBookingStore = defineStore('booking', () => {
   const isBooked = (date: string, time: string, service?: string) => {
     if (!service) return false
 
-    if (isSupabaseConfigured() && !useAuthStore().canAccessAdmin) {
+    if (useRemoteBookingAvailability() && !useAuthStore().canAccessAdmin) {
       const blocks = scheduleBlocksByDate[date] ?? []
       return isStartUnavailableForService(blocks, service, time)
     }
@@ -124,8 +125,9 @@ export const useBookingStore = defineStore('booking', () => {
   }
   // 合并到已占时段缓存
   const mergeBlockIntoCache = (booking: BookingItem) => {
-    // 如果未配置 Supabase 或者管理员，则直接返回
-    if (!isSupabaseConfigured() || useAuthStore().canAccessAdmin) return
+    if (!useRemoteBookingAvailability() || useAuthStore().canAccessAdmin) {
+      return
+    }
     // 如果预约状态为已取消，则直接返回
     if (booking.status === 'cancelled') return
     const block = bookingToPublicBlock(booking)
@@ -150,8 +152,10 @@ export const useBookingStore = defineStore('booking', () => {
     mergeBlockIntoCache(created)
     // 提交成功后刷新该日期缓存，降低脏数据窗口
     await loadTakenSlotsForDate(created.date, { force: true })
-    // 重新加载所有预约
-    await hydrateBookings()
+    // 仅管理端 / 纯本地模式维护全量 bookings；匿名远程占档模式避免无意义 GET /bookings
+    if (useAuthStore().canAccessAdmin || !useRemoteBookingAvailability()) {
+      await hydrateBookings()
+    }
     return created
   }
 

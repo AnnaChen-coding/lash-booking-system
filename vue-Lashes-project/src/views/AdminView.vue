@@ -4,9 +4,14 @@ import BookingTable from '@/components/admin/BookingTable.vue'
 import BookingStats from '@/components/admin/BookingStats.vue'
 import BookingFilter from '@/components/admin/BookingFilter.vue'
 import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const bookingStore = useBookingStore()
+
+onMounted(() => {
+  // 首屏若为匿名 + REST/SB 则未拉全表；mock / Supabase 管理员登录后进入后台需补拉
+  void bookingStore.hydrateBookings()
+})
 const filter = ref('all')
 // 计算过滤后的预约列表
 const filteredBookings = computed(() => {

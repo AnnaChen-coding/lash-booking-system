@@ -8,13 +8,18 @@ import 'element-plus/es/components/message/style/css'
 import { useBookingStore } from '@/stores/booking'
 import { useReviewStore } from '@/stores/homereview'
 import { useAuthStore } from '@/stores/auth'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { registerAccessTokenGetter } from '@/api/client'
+import { useRemoteBookingAvailability } from '@/lib/bookingRemotePolicy'
 import heroFirstWebp from '@/assets/image/hero/background.webp'
 
 const app = createApp(App)
 const pinia = createPinia()
 
 app.use(pinia)
+
+const authStore = useAuthStore()
+registerAccessTokenGetter(() => authStore.bearerForApiCalls())
+
 app.use(router)
 
 const preloadHeroImage = () => {
@@ -30,7 +35,6 @@ const preloadHeroImage = () => {
   document.head.appendChild(link)
 }
 
-const authStore = useAuthStore()
 const bookingStore = useBookingStore()
 const reviewStore = useReviewStore()
 
@@ -41,7 +45,7 @@ app.mount('#app')
 void (async () => {
   await authStore.bootstrapAuth()
   const loadAllBookings =
-    !isSupabaseConfigured() || authStore.canAccessAdmin
+    !useRemoteBookingAvailability() || authStore.canAccessAdmin
   const bookingsPromise = loadAllBookings
     ? bookingStore.hydrateBookings()
     : Promise.resolve()

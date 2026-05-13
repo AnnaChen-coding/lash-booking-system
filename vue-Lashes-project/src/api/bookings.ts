@@ -3,7 +3,7 @@ import type { ScheduleLine } from '@/data/scheduleConfig'
 import type { PublicBookingBlock } from '@/types/schedule'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import { toError } from '@/lib/toError'
-import { isRemoteApi, request } from './client'
+import { ApiError, isRemoteApi, isRestApiPreferred, request } from './client'
 import { bookingsToBlocks, legacyBookedTimesToBlocks } from '@/utils/scheduleAvailability'
 
 // 本地存储的键名
@@ -112,10 +112,71 @@ function isCheckViolation(err: unknown): boolean {
   )
 }
 
+function rethrowAsClientMessage(e: unknown): never {
+  if (e instanceof ApiError) {
+    const detail =
+      typeof e.body === 'object' &&
+      e.body !== null &&
+      'detail' in e.body
+        ? String((e.body as { detail: unknown }).detail)
+        : e.message
+    throw new Error(detail || e.message)
+  }
+  throw e instanceof Error ? e : new Error(String(e))
+}
+
+function isRestFailureRecoverable(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return true
+  return e.status >= 500 || e.status === 408 || e.status === 429
+}
+
 /**
- * 匿名调用：仅返回某日已被占用的时间段（需执行 supabase/schema.sql 中的 RPC）
+ * 兼容 FastAPI `BookedTimesOut`（`{ date, times }`）以及仅返回 `string[]` 的网关/旧版实现。
+ * 无法识别结构时返回 null，便于回落 Supabase / localStorage。
+ */
+function normalizeBookedTimesFromResponse(data: unknown): string[] | null {
+  if (Array.isArray(data)) {
+    const out = data
+      .filter((x): x is string => typeof x === 'string')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return out
+  }
+  if (typeof data === 'object' && data !== null && 'times' in data) {
+    const times = (data as { times?: unknown }).times
+    if (!Array.isArray(times)) return null
+    const out = times
+      .filter((x): x is string => typeof x === 'string')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return out
+  }
+  return null
+}
+
+/**
+ * REST GET /booked-times；失败或无法解析返回 null，便于回落 Supabase RPC 或本地。
+ */
+async function fetchBookedTimesViaRest(date: string): Promise<string[] | null> {
+  if (!isRestApiPreferred() || !isRemoteApi()) return null
+  try {
+    const data = await request<unknown>(
+      'GET',
+      `/booked-times?date=${encodeURIComponent(date)}`
+    )
+    return normalizeBookedTimesFromResponse(data)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 匿名调用：仅返回某日已被占用的时间段（Supabase 下需 RPC；REST 优先时走 GET /booked-times）。
  */
 export async function fetchBookedTimesForDate(date: string): Promise<string[]> {
+  const fromRest = await fetchBookedTimesViaRest(date)
+  if (fromRest !== null) return fromRest
+
   if (!isSupabaseConfigured()) {
     return readLocal()
       .filter(
@@ -175,6 +236,11 @@ export async function fetchScheduleBlocksForDate(
 ): Promise<PublicBookingBlock[]> {
   if (!date) return []
 
+  const fromRest = await fetchBookedTimesViaRest(date)
+  if (fromRest !== null) {
+    return legacyBookedTimesToBlocks(fromRest)
+  }
+
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
     const { data, error } = await sb.rpc('get_public_booking_blocks_for_date', {
@@ -204,12 +270,34 @@ export async function fetchScheduleBlocksForDate(
 }
 
 /**
- * 数据源优先级：Supabase → 通用 REST（VITE_API_BASE_URL）→ localStorage
+ * 数据源优先级：
+ * - `VITE_USE_REST_API=true` 且配置了 `VITE_API_BASE_URL`：FastAPI → Supabase → localStorage
+ * - 否则：Supabase → 通用 REST → localStorage
  *
- * Supabase：仅登录用户可 SELECT 全表；匿名请用 fetchBookedTimesForDate。
+ * Supabase：仅登录用户可 SELECT 全表；匿名请用 fetchBookedTimesForDate / fetchScheduleBlocksForDate。
  */
 // 获取所有预约
 export async function fetchBookings(): Promise<BookingItem[]> {
+  if (isRestApiPreferred() && isRemoteApi()) {
+    try {
+      const rows = await request<BookingItem[]>('GET', '/bookings', {
+        auth: true,
+      })
+      return (rows ?? []).map((r) =>
+        rowToBooking(r as unknown as Record<string, unknown>)
+      )
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        throw new Error(
+          e.status === 401
+            ? '管理员会话无效或已过期，请重新登录'
+            : '无权限访问预约列表'
+        )
+      }
+      /* 网络/5xx 等回落到下方 */
+    }
+  }
+
   // 如果 Supabase 配置了，则调用 Supabase 的 API
   if (isSupabaseConfigured()) {
     // 获取 Supabase 客户端
@@ -230,14 +318,37 @@ export async function fetchBookings(): Promise<BookingItem[]> {
   }
   // 如果远程 API 配置了，则调用远程 API
   if (isRemoteApi()) {
-    // 调用远程 API
-    return request<BookingItem[]>('GET', '/bookings')
+    // 受保护路由需 Bearer（REST JWT 或 Supabase 管理员 access_token）
+    return request<BookingItem[]>('GET', '/bookings', { auth: true })
   }
   // 否则读取本地存储
   return readLocal()
 }
 // 新增一个预约
 export async function createBooking(item: BookingItem): Promise<BookingItem> {
+  if (isRestApiPreferred() && isRemoteApi()) {
+    try {
+      const body = {
+        name: item.name,
+        phone: item.phone,
+        service: item.service,
+        date: item.date,
+        time: item.time,
+        notes: item.notes,
+        status: item.status,
+      }
+      const data = await request<BookingItem>('POST', '/bookings', { body })
+      return rowToBooking(data as unknown as Record<string, unknown>)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        throw new Error('This time slot has already been booked.')
+      }
+      if (!isRestFailureRecoverable(e)) {
+        rethrowAsClientMessage(e)
+      }
+    }
+  }
+
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
     // 创建 payload
@@ -389,6 +500,20 @@ export async function createBooking(item: BookingItem): Promise<BookingItem> {
 }
 // 删除预约
 export async function deleteBooking(id: number): Promise<void> {
+  if (isRestApiPreferred() && isRemoteApi()) {
+    try {
+      await request<void>('DELETE', `/bookings/${id}`, { auth: true })
+      return
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        throw new Error('Booking not found.')
+      }
+      if (!isRestFailureRecoverable(e)) {
+        rethrowAsClientMessage(e)
+      }
+    }
+  }
+
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
     const { error } = await sb
@@ -404,7 +529,7 @@ export async function deleteBooking(id: number): Promise<void> {
   }
   if (isRemoteApi()) {
     // 调用远程 API
-    await request<void>('DELETE', `/bookings/${id}`)
+    await request<void>('DELETE', `/bookings/${id}`, { auth: true })
     return
   }
   // 将本地存储的 items 数组中 id 不等于 id 的行写入本地存储
@@ -415,6 +540,23 @@ export async function patchBookingStatus(
   id: number,
   status: BookingItem['status']
 ): Promise<void> {
+  if (isRestApiPreferred() && isRemoteApi()) {
+    try {
+      await request<void>('PATCH', `/bookings/${id}/status`, {
+        body: { status },
+        auth: true,
+      })
+      return
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        throw new Error('Booking not found.')
+      }
+      if (!isRestFailureRecoverable(e)) {
+        rethrowAsClientMessage(e)
+      }
+    }
+  }
+
   // 如果 Supabase 配置了，则调用 Supabase 的 API
   if (isSupabaseConfigured()) {
     const sb = getSupabase()
@@ -447,7 +589,10 @@ export async function patchBookingStatus(
   if (isRemoteApi()) {
     // 调用远程 API
     // FastAPI 路由：PATCH /bookings/{id}/status
-    await request<void>('PATCH', `/bookings/${id}/status`, { body: { status } })
+    await request<void>('PATCH', `/bookings/${id}/status`, {
+      body: { status },
+      auth: true,
+    })
     return
   }
   // 否则读取本地存储

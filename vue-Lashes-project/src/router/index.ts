@@ -64,18 +64,10 @@ router.beforeEach((to: RouteLocationNormalized) => {
   // 获取授权状态
   const auth = useAuthStore()
 
-  if (to.meta.requiresAdmin) {
-    // 如果需要管理员权限，则检查是否具有管理员权限
-    if (!auth.canAccessAdmin) {
-      // 如果未登录，则跳转到登录页面
-      if (!auth.isAuthenticated) {
-        return {
-          name: 'login',
-          query: { redirect: to.fullPath },
-        }
-      }
-      // 如果已登录，则跳转到首页
-      return { name: 'home' }
+  if (to.meta.requiresAdmin && !auth.canAccessAdmin) {
+    return {
+      name: 'login',
+      query: { redirect: to.fullPath },
     }
   }
 

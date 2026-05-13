@@ -7,7 +7,7 @@ import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { usePlaceholderBookingIdUntilCreated } from '@/lib/bookingRemotePolicy'
 import { dispatchBookingSuccessNotification } from '@/services/bookingNotification'
 import { ElMessage } from 'element-plus'
 
@@ -92,7 +92,7 @@ const handleSubmitBooking = async (value: {
     }
     // 如果未预约，则添加预约
     const created = await bookingStore.addBooking({
-      id: isSupabaseConfigured() ? 0 : Date.now(),
+      id: usePlaceholderBookingIdUntilCreated() ? 0 : Date.now(),
       name: bookingData.value.name,
       phone: bookingData.value.phone,
       service: bookingData.value.service,
@@ -146,11 +146,10 @@ const handleSubmitBooking = async (value: {
   }
   // 如果预约状态为已取消，则提示用户
   catch (e) {
-    // 如果错误是实例，则获取错误消息
-    // 否则返回默认消息
     const message = e instanceof Error
       ? e.message
       : 'Booking submission failed, please try again later.'
+    /** REST 409 与 createBooking 抛出的英文文案须走下方冲突分支（刷新占档 + recommendAvailableSlots） */
     const isConflict = /已被预约|already booked|另选时间/i.test(message)
     // 如果预约时间冲突，则提示用户选择其他时间
     if (isConflict) {
@@ -209,6 +208,7 @@ const handleAiApplyService = (name: string) => {
         <div class="section-block">
           <TimePicker
             :service="bookingData.service"
+            :booking-time="bookingData.time"
             @select-time="handleTimeSelect"
           />
         </div>

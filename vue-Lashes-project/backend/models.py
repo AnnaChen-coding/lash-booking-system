@@ -1,10 +1,10 @@
 """
 SQLAlchemy ORM 模型定义。
+
+与仓库内 supabase/schema.sql 中 public.bookings / public.admin_emails 对齐。
 """
 
-from datetime import datetime
-
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -12,7 +12,7 @@ from database import Base
 
 class Booking(Base):
     """
-    预约表：用于存储前端提交的预约信息。
+    预约表：与 Supabase public.bookings 同一套结构（可连 Supabase Postgres 或本地 SQLite）。
     """
 
     __tablename__ = "bookings"
@@ -25,6 +25,11 @@ class Booking(Base):
     time: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
-    )
+
+
+class AdminEmail(Base):
+    """与 schema.sql 中 public.admin_emails 一致（仅 email 主键）。"""
+
+    __tablename__ = "admin_emails"
+
+    email: Mapped[str] = mapped_column(String(255), primary_key=True)

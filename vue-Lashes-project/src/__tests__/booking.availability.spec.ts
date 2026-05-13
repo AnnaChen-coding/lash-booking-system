@@ -11,6 +11,17 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
+/** 避免本地 .env 开启 REST 时走空的 scheduleBlocksByDate，掩盖 bookings 列表占档逻辑 */
+vi.mock('@/api/client', () => ({
+  isRestApiPreferred: () => false,
+  isRemoteApi: () => false,
+  getApiBaseUrl: () => '',
+  request: async () => {
+    throw new Error('request() should not be used in local availability tests')
+  },
+  ApiError: class ApiError extends Error {},
+}))
+
 describe('booking availability', () => {
   // 每次测试前重置 Pinia
   beforeEach(() => {

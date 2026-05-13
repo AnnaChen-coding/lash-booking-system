@@ -121,9 +121,14 @@ export function isStartUnavailableForService(
   const line = getScheduleLineForService(serviceName)
   if (!line) return false
 
+  const newStart = timeStringToMinutes(startTime)
+  /** 与库表「同一 date + 同一 time 仅一单」及 get_booked_times / REST 占档一致：该时刻已有预约开始则不可再选同一时间。 */
+  if (blocks.some((b) => timeStringToMinutes(b.time) === newStart)) {
+    return true
+  }
+
   const capacity = SCHEDULE_LINES[line].technicianCount
   const newBlock = getBlockMinutesForService(serviceName)
-  const newStart = timeStringToMinutes(startTime)
   const newEnd = newStart + newBlock
 
   const intervals = blocks

@@ -1,6 +1,10 @@
 /**
- * 统一 HTTP 客户端。预约与评价优先走 Supabase（见 VITE_SUPABASE_*）；
- * 否则设置 VITE_API_BASE_URL 时走本文件的 fetch；再否则为 localStorage 等本地实现。
+ * 统一 HTTP 客户端。
+ *
+ * - 未设置 `VITE_USE_REST_API=true` 时：预约数据仍按「Supabase → VITE_API_BASE_URL → localStorage」
+ *   （见 `bookings.ts`）。
+ * - 设置 `VITE_USE_REST_API=true` 且配置了 `VITE_API_BASE_URL` 时：预约 API 优先走 FastAPI，
+ *   失败再回落 Supabase / 本地（见 `isRestApiPreferred()` 与 `bookings.ts`）。
  */
 // 自定义错误类
 export class ApiError extends Error {
@@ -24,11 +28,29 @@ export function getApiBaseUrl(): string {
 export function isRemoteApi(): boolean {
   return getApiBaseUrl() !== ''
 }
+
+/** 为 true 且配置了 `VITE_API_BASE_URL` 时，`bookings.ts` 优先走 FastAPI REST。 */
+export function isRestApiPreferred(): boolean {
+  const raw = import.meta.env.VITE_USE_REST_API?.trim().toLowerCase()
+  return raw === 'true' && getApiBaseUrl() !== ''
+}
+
+/** 由 main.ts 注册，避免 client 与 auth store 循环依赖 */
+let accessTokenGetter: (() => string | null) | null = null
+
+export function registerAccessTokenGetter(fn: () => string | null): void {
+  accessTokenGetter = fn
+}
+
+function getBearerToken(): string | null {
+  return accessTokenGetter?.() ?? null
+}
+
 // 请求 API
 export async function request<T>(
   method: string,
   path: string,
-  options?: { body?: unknown }
+  options?: { body?: unknown; auth?: boolean }
 ): Promise<T> {
   const base = getApiBaseUrl()
   if (!base) {
@@ -36,12 +58,19 @@ export async function request<T>(
   }
   // 拼接完整请求地址
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (options?.auth) {
+    const t = getBearerToken()
+    if (t) {
+      headers.Authorization = `Bearer ${t}`
+    }
+  }
   // 初始化请求
   const init: RequestInit = {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   }
 
   if (

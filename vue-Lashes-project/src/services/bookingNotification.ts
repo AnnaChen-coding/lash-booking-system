@@ -70,7 +70,7 @@ export async function dispatchBookingSuccessNotification(
 ): Promise<BookingNotifyResult> {
   const warnings: string[] = []
 
-  // 如果配置了远程 API，则调用远程 API
+  // 配置了 API Base 时先走 FastAPI 通知（与预约 REST 同源）；REST 优先模式下失败会再尝试 Supabase
   if (isRemoteApi()) {
     try {
       await request('POST', '/notifications/booking-success', {
@@ -84,7 +84,6 @@ export async function dispatchBookingSuccessNotification(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      // 添加警告
       warnings.push(`远程通知接口失败：${message}`)
     }
   }
