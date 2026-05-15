@@ -3,17 +3,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useBookingStore } from '@/stores/booking'
 import { isStartUnavailableForService } from '@/utils/scheduleAvailability'
 import type { PublicBookingBlock } from '@/types/schedule'
-// 模拟 Supabase 未配置
-vi.mock('@/lib/supabase', () => ({
-  isSupabaseConfigured: () => false,
-  getSupabase: () => {
-    throw new Error('supabase should not be used in local availability tests')
-  },
-}))
 
-/** 避免本地 .env 开启 REST 时走空的 scheduleBlocksByDate，掩盖 bookings 列表占档逻辑 */
 vi.mock('@/api/client', () => ({
-  isRestApiPreferred: () => false,
   isRemoteApi: () => false,
   getApiBaseUrl: () => '',
   request: async () => {
@@ -23,7 +14,6 @@ vi.mock('@/api/client', () => ({
 }))
 
 describe('booking availability', () => {
-  // 每次测试前重置 Pinia
   beforeEach(() => {
     setActivePinia(createPinia())
   })

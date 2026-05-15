@@ -3,13 +3,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import router from '@/router'
 import { MOCK_LOGIN_PASSWORD, useAuthStore } from '@/stores/auth'
 
-vi.mock('@/lib/supabase', () => ({
-  isSupabaseConfigured: () => false,
-  getSupabase: () => {
-    throw new Error('supabase should not be used in router guard tests')
-  },
-}))
-
 async function navigate(path: string) {
   await router.push(path)
   await router.isReady()
@@ -17,6 +10,7 @@ async function navigate(path: string) {
 
 describe('router guards', () => {
   beforeEach(async () => {
+    vi.stubEnv('VITE_API_BASE_URL', '')
     localStorage.clear()
     setActivePinia(createPinia())
     await navigate('/')

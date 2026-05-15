@@ -2,17 +2,13 @@
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore, MOCK_LOGIN_PASSWORD } from '@/stores/auth'
-import { isSupabaseConfigured } from '@/lib/supabase'
-import { isRestApiPreferred, isRemoteApi } from '@/api/client'
+import { isRemoteApi } from '@/api/client'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-const useCloudAuth = computed(() => isSupabaseConfigured())
-const useRestAdminAuth = computed(
-  () => isRestApiPreferred() && isRemoteApi()
-)
+const useApiAuth = computed(() => isRemoteApi())
 
 const form = reactive({
   email: '',
@@ -26,22 +22,12 @@ const handleSubmit = async () => {
   error.value = ''
   loading.value = true
   try {
-    if (useRestAdminAuth.value) {
+    if (useApiAuth.value) {
       if (!form.email.trim() || !form.password) {
         error.value = '请填写邮箱与密码'
         return
       }
       const r = await auth.loginWithRest(form.email, form.password)
-      if (r.ok === false) {
-        error.value = r.message
-        return
-      }
-    } else if (useCloudAuth.value) {
-      if (!form.email.trim() || !form.password) {
-        error.value = '请填写邮箱与密码'
-        return
-      }
-      const r = await auth.loginWithSupabase(form.email, form.password)
       if (r.ok === false) {
         error.value = r.message
         return
@@ -69,15 +55,9 @@ const handleSubmit = async () => {
   <section class="login-page">
     <div class="login-card">
       <h1 class="title">
-        {{
-          useRestAdminAuth
-            ? '管理员登录（FastAPI）'
-            : useCloudAuth
-              ? '管理员登录'
-              : '管理员登录（Mock）'
-        }}
+        {{ useApiAuth ? '管理员登录' : '管理员登录（Mock）' }}
       </h1>
-      <p v-if="useRestAdminAuth" class="hint">
+      <p v-if="useApiAuth" class="hint">
         邮箱须在数据库
         <strong>admin_emails</strong>
         或后端环境变量
@@ -86,18 +66,14 @@ const handleSubmit = async () => {
         <strong>FASTAPI_ADMIN_PASSWORD</strong>
         配置。
       </p>
-      <p v-else-if="!useCloudAuth" class="hint">
-        演示口令：<code>{{ MOCK_LOGIN_PASSWORD }}</code>
-      </p>
       <p v-else class="hint">
-        使用已在
-        <strong>表 admin_emails</strong>
-        中登记的邮箱，并在
-        <strong>Authentication → Users</strong>
-        创建同邮箱账号后登录。未在白名单的账号无法进入后台。
+        未配置
+        <code>VITE_API_BASE_URL</code>
+        ，使用演示口令：
+        <code>{{ MOCK_LOGIN_PASSWORD }}</code>
       </p>
       <form class="form" @submit.prevent="handleSubmit">
-        <label v-if="useCloudAuth || useRestAdminAuth" class="label">
+        <label v-if="useApiAuth" class="label">
           邮箱
           <input
             v-model="form.email"
@@ -108,13 +84,13 @@ const handleSubmit = async () => {
           />
         </label>
         <label class="label">
-          {{ useCloudAuth || useRestAdminAuth ? '密码' : '口令' }}
+          {{ useApiAuth ? '密码' : '口令' }}
           <input
             v-model="form.password"
             type="password"
             class="input"
             autocomplete="current-password"
-            :placeholder="useCloudAuth || useRestAdminAuth ? '密码' : '输入 demo'"
+            :placeholder="useApiAuth ? '密码' : '输入 demo'"
           />
         </label>
         <p v-if="error" class="error">

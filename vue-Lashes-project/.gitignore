@@ -41,3 +41,6 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
+# FastAPI 本地密钥（复制 backend/.env.example 为 backend/.env）
+backend/.env
+

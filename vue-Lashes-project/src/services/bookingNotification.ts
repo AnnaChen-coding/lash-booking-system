@@ -1,8 +1,6 @@
 import { request, isRemoteApi } from '@/api/client'
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import type { BookingItem } from '@/types/booking'
 
-// 预约成功通知 payload
 export interface BookingNotifyPayload {
   customerName: string
   customerPhone: string
@@ -14,17 +12,15 @@ export interface BookingNotifyPayload {
   booking: BookingItem
 }
 
-// 预约成功通知结果
 export interface BookingNotifyResult {
-  provider: 'remote_api' | 'supabase_function' | 'mock'
+  provider: 'remote_api' | 'mock'
   usedCustomerChannel: 'email' | 'sms_mock'
   usedAdminChannel: 'email' | 'sms_mock'
   warnings: string[]
 }
 
-// 模拟管理员短信
 const MOCK_ADMIN_SMS = '店长手机（模拟）'
-// 解析管理员邮箱
+
 function parseAdminEmails(): string[] {
   const raw = import.meta.env.VITE_BOOKING_ADMIN_EMAILS
   if (!raw || typeof raw !== 'string') return []
@@ -33,17 +29,18 @@ function parseAdminEmails(): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
 }
-// 模拟通知
-function mockNotify(payload: BookingNotifyPayload, warnings: string[]): BookingNotifyResult {
+
+function mockNotify(
+  payload: BookingNotifyPayload,
+  warnings: string[]
+): BookingNotifyResult {
   const adminEmails = parseAdminEmails()
   const customerEmail = payload.customerEmail?.trim()
 
-  const usedCustomerChannel: BookingNotifyResult['usedCustomerChannel'] = customerEmail
-    ? 'email'
-    : 'sms_mock'
-  const usedAdminChannel: BookingNotifyResult['usedAdminChannel'] = adminEmails.length
-    ? 'email'
-    : 'sms_mock'
+  const usedCustomerChannel: BookingNotifyResult['usedCustomerChannel'] =
+    customerEmail ? 'email' : 'sms_mock'
+  const usedAdminChannel: BookingNotifyResult['usedAdminChannel'] =
+    adminEmails.length ? 'email' : 'sms_mock'
 
   const customerTarget = customerEmail || payload.customerPhone
   const adminTarget = adminEmails.join(', ') || MOCK_ADMIN_SMS
@@ -64,13 +61,12 @@ function mockNotify(payload: BookingNotifyPayload, warnings: string[]): BookingN
     warnings,
   }
 }
-// 分发预约成功通知
+
 export async function dispatchBookingSuccessNotification(
   payload: BookingNotifyPayload
 ): Promise<BookingNotifyResult> {
   const warnings: string[] = []
 
-  // 配置了 API Base 时先走 FastAPI 通知（与预约 REST 同源）；REST 优先模式下失败会再尝试 Supabase
   if (isRemoteApi()) {
     try {
       await request('POST', '/notifications/booking-success', {
@@ -78,7 +74,9 @@ export async function dispatchBookingSuccessNotification(
       })
       return {
         provider: 'remote_api',
-        usedCustomerChannel: payload.customerEmail?.trim() ? 'email' : 'sms_mock',
+        usedCustomerChannel: payload.customerEmail?.trim()
+          ? 'email'
+          : 'sms_mock',
         usedAdminChannel: parseAdminEmails().length ? 'email' : 'sms_mock',
         warnings,
       }
@@ -88,27 +86,5 @@ export async function dispatchBookingSuccessNotification(
     }
   }
 
-  // 如果配置了 Supabase，则调用 Supabase 通知函数
-  if (isSupabaseConfigured()) {
-    try {
-      const sb = getSupabase()
-      const functionName = import.meta.env.VITE_SUPABASE_NOTIFY_FUNCTION?.trim() || 'booking-notify'
-      const { error } = await sb.functions.invoke(functionName, {
-        body: payload,
-      })
-      if (error) throw error
-      return {
-        provider: 'supabase_function',
-        usedCustomerChannel: payload.customerEmail?.trim() ? 'email' : 'sms_mock',
-        usedAdminChannel: parseAdminEmails().length ? 'email' : 'sms_mock',
-        warnings,
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      warnings.push(`Supabase 通知函数失败：${message}`)
-    }
-  }
-
-  // 如果配置了远程 API 和 Supabase，则返回 mock 通知
   return mockNotify(payload, warnings)
 }

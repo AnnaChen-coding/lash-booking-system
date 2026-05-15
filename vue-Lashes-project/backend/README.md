@@ -147,22 +147,36 @@ curl -i -X POST "http://127.0.0.1:8000/bookings" \
   -d '{"name":"Bella","phone":"13900139000","service":"Classic Lashes","date":"2026-05-01","time":"14:00","notes":"Should conflict","status":"pending"}'
 ```
 
-3) 修改预约状态 `PATCH /bookings/{id}/status`
+3) 管理员登录，取得 `ACCESS_TOKEN`（需先配置 `FASTAPI_JWT_SECRET`、`FASTAPI_ADMIN_PASSWORD`，并在 `admin_emails` 或 `ADMIN_EMAILS` 中登记邮箱）
+```bash
+ACCESS_TOKEN=$(curl -s -X POST "http://127.0.0.1:8000/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"owner@example.com","password":"YOUR_FASTAPI_ADMIN_PASSWORD"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])') && echo "OK"
+```
+
+4) 修改预约状态 `PATCH /bookings/{id}/status`（需 Bearer）
 ```bash
 curl -i -X PATCH "http://127.0.0.1:8000/bookings/${BOOKING_ID}/status" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"status":"confirmed"}'
 ```
 
-4) 删除预约 `DELETE /bookings/{id}`
+5) 删除预约 `DELETE /bookings/{id}`（需 Bearer）
 ```bash
-curl -i -X DELETE "http://127.0.0.1:8000/bookings/${BOOKING_ID}"
+curl -i -X DELETE "http://127.0.0.1:8000/bookings/${BOOKING_ID}" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
 
 ## 接口清单
 
-- `GET /bookings`：获取全部预约（id 升序）
-- `GET /booked-times`：查询参数 `date`，返回 `{ date, times }`，已占用开始时间（不含 `cancelled`）
-- `POST /bookings`：创建预约（同槽位冲突 → 409）
-- `DELETE /bookings/{id}`：删除预约
-- `PATCH /bookings/{id}/status`：更新预约状态
+- `POST /auth/login`：管理员登录，返回 `access_token`
+- `GET /auth/me`：Bearer 校验，返回 `{ email, isAdmin }`
+- `GET /bookings`：**需管理员** Bearer，获取全部预约（id 升序）
+- `GET /booked-times`：匿名，查询参数 `date`，返回 `{ date, times }`
+- `POST /bookings`：匿名，创建预约（同槽位冲突 → 409）
+- `POST /bookings/{id}/confirm-payment`：匿名，模拟支付 `pending_payment` → `paid`
+- `DELETE /bookings/{id}`：**需管理员** Bearer
+- `PATCH /bookings/{id}/status`：**需管理员** Bearer
+- `POST /notifications/booking-success`：匿名通知桩

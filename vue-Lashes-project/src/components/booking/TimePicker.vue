@@ -4,7 +4,6 @@ import { timeSlots } from '@/data/timeSlots'
 import { useBookingStore } from '@/stores/booking'
 import { useRemoteBookingAvailability } from '@/lib/bookingRemotePolicy'
 import { useAuthStore } from '@/stores/auth'
-import AppSkeletonPulse from '@/components/common/AppSkeletonPulse.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -21,38 +20,50 @@ const emit = defineEmits<{
   (e: 'select-time', value: { date: string; time: string }): void
 }>()
 // --- 状态与 Store ---
-// 实例化 Store
 const bookingStore = useBookingStore()
 const auth = useAuthStore()
-// 存储用户选中的日期
 const selectedDate = ref('')
 const selectedTime = ref('')
-const isRefreshing = ref(false)
-const lastRefreshedAt = ref<Date | null>(null)
 const AUTO_REFRESH_MS = 15000
 let timerId: number | null = null
 
 const needsRemoteSlots = computed(
   () => useRemoteBookingAvailability() && !auth.canAccessAdmin
 )
-// 计算上次更新时间
-const lastRefreshedText = computed(() => {
-  if (!needsRemoteSlots.value) {
-    return '本地预约时间预览（连接 Supabase 或开启 REST API 以获取实时可用时间）。'
-  }
-  if (!lastRefreshedAt.value) return '同步可用时段…'
-  return `上次更新时间：${lastRefreshedAt.value.toLocaleTimeString()}`
+
+const dateMeta = computed(() => {
+  const d = selectedDate.value
+  if (!d) return null
+  return bookingStore.takenSlotsMeta[d] ?? null
 })
 
-// 计算是否锁定时段加载
-const slotsLoadLocked = computed(
-  () =>
-    Boolean(selectedDate.value) &&
-    needsRemoteSlots.value &&
-    isRefreshing.value
-)
+/** 不遮挡时段按钮：列表始终来自本地 timeSlots，占档状态随同步更新；文案说明「浏览 vs 提交前校验」 */
+const slotHintText = computed(() => {
+  if (!needsRemoteSlots.value) {
+    return '本地预约时间预览（配置 VITE_API_BASE_URL 后将同步后端实时占用时段）。'
+  }
+  if (!selectedDate.value) {
+    return '请选择日期后将自动同步该日占用时段。'
+  }
+  const m = dateMeta.value
+  if (!m) {
+    return '正在同步最新预约状态，可先浏览时段，最终可用性将在提交前校验。'
+  }
+  if (m.loading) {
+    return '正在同步最新预约状态，可先浏览时段，最终可用性将在提交前校验。'
+  }
+  if (!m.known && m.lastError) {
+    return '无法同步最新预约状态，提交前会再次校验。'
+  }
+  if (m.known && m.lastError) {
+    return '本次刷新失败，仍显示上次成功同步的占用；提交前会再次校验。'
+  }
+  if (m.known && m.lastSuccessAt) {
+    return `上次同步时间：${new Date(m.lastSuccessAt).toLocaleTimeString()}（后台会定期刷新；提交前仍会强制校验。）`
+  }
+  return '正在同步最新预约状态，可先浏览时段，最终可用性将在提交前校验。'
+})
 
-// 计算是否可以刷新已占时段
 const canRefreshTakenSlots = () =>
   Boolean(selectedDate.value) &&
   useRemoteBookingAvailability() &&
@@ -60,59 +71,49 @@ const canRefreshTakenSlots = () =>
 
 const refreshSlotsForSelectedDate = async (force = false) => {
   if (!canRefreshTakenSlots() || !selectedDate.value) return
-  isRefreshing.value = true
-  try {
-    await bookingStore.loadTakenSlotsForDate(selectedDate.value, { force })
-    if (
-      selectedTime.value &&
-      bookingStore.isBooked(
-        selectedDate.value,
-        selectedTime.value,
-        props.service
-      )
-    ) {
-      selectedTime.value = ''
-      emit('select-time', { date: selectedDate.value, time: '' })
-    }
-    lastRefreshedAt.value = new Date()
-  } finally {
-    isRefreshing.value = false
+  const result = await bookingStore.loadTakenSlotsForDate(selectedDate.value, {
+    force,
+  })
+  if (!result.ok) return
+  if (
+    selectedTime.value &&
+    bookingStore.isBooked(
+      selectedDate.value,
+      selectedTime.value,
+      props.service
+    )
+  ) {
+    selectedTime.value = ''
+    emit('select-time', { date: selectedDate.value, time: '' })
   }
 }
-// 启动自动刷新
+
 const startAutoRefresh = () => {
   if (timerId !== null) return
   timerId = window.setInterval(() => {
     void refreshSlotsForSelectedDate(true)
   }, AUTO_REFRESH_MS)
 }
-// 停止自动刷新
+
 const stopAutoRefresh = () => {
   if (timerId === null) return
   window.clearInterval(timerId)
   timerId = null
 }
 
-// 监听用户选中的日期，如果日期为空或未配置 Supabase 或管理员，则不加载已占时段
 watch(
-  // 监听 selectedDate.value 的变化
   () => selectedDate.value,
-
   (d, oldDate) => {
     if (d !== oldDate) {
       selectedTime.value = ''
-      lastRefreshedAt.value = null
       if (d) {
         emit('select-time', { date: d, time: '' })
       }
     }
-    // 无 Supabase/REST 或管理员：不拉远程占档
-    if (!d || !useRemoteBookingAvailability() || auth.canAccessAdmin)
-      return
-    // 否则调用 Store 的方法，加载已占时段
+    if (!d || !useRemoteBookingAvailability() || auth.canAccessAdmin) return
+    bookingStore.getTakenSlotsMeta(d)
     void refreshSlotsForSelectedDate(true)
   },
-  // 立即执行
   { immediate: true }
 )
 
@@ -143,25 +144,20 @@ watch(
     emit('select-time', { date: selectedDate.value, time: '' })
   }
 )
-// --- 逻辑处理 ---
-const handleSelectTime = (time: string) => {
-  // 如果还没选日期，不允许选时间
-  if (!selectedDate.value) return
-  if (slotsLoadLocked.value) return
 
+const handleSelectTime = (time: string) => {
+  if (!selectedDate.value) return
   selectedTime.value = time
-// 将选中的日期和时间打包发送给父组件
   emit('select-time', {
     date: selectedDate.value,
     time,
   })
 }
-// 组件挂载时启动自动刷新
+
 onMounted(() => {
   startAutoRefresh()
 })
 
-// 组件卸载时停止自动刷新
 onBeforeUnmount(() => {
   stopAutoRefresh()
 })
@@ -192,28 +188,16 @@ onBeforeUnmount(() => {
     <div v-if="selectedDate" class="slots-wrapper">
       <p class="slot-title">Available Time Slots</p>
       <p class="slot-hint">
-        {{ slotsLoadLocked ? 'Syncing…' : lastRefreshedText }}
+        {{ slotHintText }}
+      </p>
+      <p
+        v-if="needsRemoteSlots && dateMeta && !dateMeta.known && (dateMeta.loading || dateMeta.lastError)"
+        class="slot-warning"
+      >
+        当前列表为本地时段；占用状态需同步成功后才准确。提交前系统会再次向服务器校验。
       </p>
 
-      <div
-        v-if="slotsLoadLocked"
-        class="time-slots time-slots-skeleton"
-        aria-busy="true"
-        aria-label="Loading time slots"
-      >
-        <AppSkeletonPulse
-          v-for="n in 9"
-          :key="n"
-          height="40px"
-          radius="999px"
-          class="slot-skel"
-        />
-      </div>
-
-      <div
-        v-else
-        class="time-slots"
-      >
+      <div class="time-slots">
         <el-button
           v-for="time in timeSlots"
           :key="time"
@@ -305,17 +289,24 @@ onBeforeUnmount(() => {
   margin: -6px 0 0;
   font-size: 13px;
   color: var(--color-text-soft);
+  line-height: 1.55;
+}
+
+.slot-warning {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: rgba(180, 120, 40, 0.12);
+  border: 1px solid rgba(180, 120, 40, 0.35);
+  border-radius: 12px;
 }
 
 .time-slots {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-}
-
-.time-slots-skeleton .slot-skel {
-  width: 100%;
-  display: block;
 }
 
 .time-btn {

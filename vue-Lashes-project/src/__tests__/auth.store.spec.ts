@@ -2,15 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { MOCK_LOGIN_PASSWORD, useAuthStore } from '@/stores/auth'
 
-vi.mock('@/lib/supabase', () => ({
-  isSupabaseConfigured: () => false,
-  getSupabase: () => {
-    throw new Error('supabase should not be used in mock-mode tests')
-  },
-}))
-
 describe('auth store (mock mode)', () => {
   beforeEach(() => {
+    vi.stubEnv('VITE_API_BASE_URL', '')
     localStorage.clear()
     setActivePinia(createPinia())
   })

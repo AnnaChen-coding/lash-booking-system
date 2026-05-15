@@ -7,9 +7,13 @@ import { useBookingStore } from '@/stores/booking'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { BookingFormData } from '@/types/booking'
-import { usePlaceholderBookingIdUntilCreated } from '@/lib/bookingRemotePolicy'
+import {
+  usePlaceholderBookingIdUntilCreated,
+  useRemoteBookingAvailability,
+} from '@/lib/bookingRemotePolicy'
 import { dispatchBookingSuccessNotification } from '@/services/bookingNotification'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 
 // --- 统一的状态管理 ---
 // 使用一个响应式对象 bookingData 收集所有步骤的数据
@@ -30,6 +34,7 @@ const route = useRoute()
 const router = useRouter()
 // 预约存储实例
 const bookingStore = useBookingStore()
+const authStore = useAuthStore()
 // 构建冲突消息
 const buildConflictMessage = (date: string, time: string) => {
   const suggestions = bookingStore.recommendAvailableSlots(
@@ -38,10 +43,11 @@ const buildConflictMessage = (date: string, time: string) => {
     3,
     bookingData.value.service
   )
+  const prefix = '该时间段刚刚被预约，请选择其他时间。'
   if (!suggestions.length) {
-    return 'This slot was just booked. No more slots are available on this date. Please choose another date.'
+    return `${prefix} 该日期已无空档，请改选其他日期。`
   }
-  return `This slot was just booked. Suggested alternatives: ${suggestions.join(' / ')}`
+  return `${prefix} 建议时段：${suggestions.join(' / ')}`
 }
 
 // --- 回调处理 ---
@@ -70,27 +76,33 @@ const handleSubmitBooking = async (value: {
     !bookingData.value.date ||
     !bookingData.value.time
   ) {
-    alert('Please select a service, date, and time first.')
+    alert('请先选择服务、日期与时段。')
     return
   }
   // 设置正在提交状态
   isSubmitting.value = true
   try {
-    // 冲突校验前强制刷新当前日期缓存，避免把本地缓存当成绝对真相
-    await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
+    if (useRemoteBookingAvailability() && !authStore.canAccessAdmin) {
+      const refresh = await bookingStore.loadTakenSlotsForDate(
+        bookingData.value.date,
+        { force: true, verifyForSubmit: true }
+      )
+      if (!refresh.ok) {
+        alert('无法验证最新预约状态，请稍后再试。')
+        return
+      }
+    }
     const alreadyBooked = bookingStore.isBooked(
       bookingData.value.date,
       bookingData.value.time,
       bookingData.value.service
     )
-    // 如果已经预约，则提示用户选择其他时间
     if (alreadyBooked) {
       const selectedTime = bookingData.value.time
       bookingData.value.time = ''
       alert(buildConflictMessage(bookingData.value.date, selectedTime))
       return
     }
-    // 如果未预约，则添加预约
     const created = await bookingStore.addBooking({
       id: usePlaceholderBookingIdUntilCreated() ? 0 : Date.now(),
       name: bookingData.value.name,
@@ -130,7 +142,7 @@ const handleSubmitBooking = async (value: {
     else if (created.status === 'paid') {
       bookingStore.setLastPaymentBooking(created)
       alert(
-        'Booking submitted. The database does not support pending payment yet, so you will enter a frontend mock payment page (no DB write-back). Run supabase/schema.sql in Supabase SQL Editor for full flow.'
+        '预约已提交。当前订单将使用前端模拟支付页（状态为 paid 时通常无需支付步骤）。'
       )
       await router.push({
         name: 'bookingPay',
@@ -148,19 +160,27 @@ const handleSubmitBooking = async (value: {
   catch (e) {
     const message = e instanceof Error
       ? e.message
-      : 'Booking submission failed, please try again later.'
-    /** REST 409 与 createBooking 抛出的英文文案须走下方冲突分支（刷新占档 + recommendAvailableSlots） */
-    const isConflict = /已被预约|already booked|另选时间/i.test(message)
-    // 如果预约时间冲突，则提示用户选择其他时间
+      : '预约提交失败，请稍后再试。'
+    /** REST 409、数据库唯一约束、createBooking 文案等 */
+    const isConflict =
+      /已被预约|刚刚已被|请选择其他|already been booked|already booked|unique constraint|23505|duplicate key|另选时间|conflict/i.test(
+        message
+      )
     if (isConflict) {
       const selectedTime = bookingData.value.time
-      // 强制刷新当前日期缓存，避免把本地缓存当成绝对真相
-      await bookingStore.loadTakenSlotsForDate(bookingData.value.date, { force: true })
-      // 构建冲突消息 并返回最新消息
-      const latestMessage = buildConflictMessage(bookingData.value.date, selectedTime)
-      // 清空选中的时间
+      const refresh = await bookingStore.loadTakenSlotsForDate(
+        bookingData.value.date,
+        { force: true, verifyForSubmit: true }
+      )
+      if (!refresh.ok) {
+        alert('无法验证最新预约状态，请稍后再试。')
+        return
+      }
+      const latestMessage = buildConflictMessage(
+        bookingData.value.date,
+        selectedTime
+      )
       bookingData.value.time = ''
-      // 提示用户选择其他时间
       alert(latestMessage)
       return
     }

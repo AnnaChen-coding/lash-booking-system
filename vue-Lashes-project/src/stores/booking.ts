@@ -7,6 +7,7 @@ import {
   deleteBooking,
   fetchBookings,
   fetchScheduleBlocksForDate,
+  fetchScheduleBlocksForSubmitVerify,
   patchBookingStatus,
 } from '@/api/bookings'
 import { useRemoteBookingAvailability } from '@/lib/bookingRemotePolicy'
@@ -18,14 +19,26 @@ import {
 } from '@/utils/scheduleAvailability'
 import type { PublicBookingBlock } from '@/types/schedule'
 
+export type TakenSlotsMeta = {
+  loading: boolean
+  /** 本会话内至少成功拉取过一次该日占档 */
+  known: boolean
+  lastError: string | null
+  lastSuccessAt: number | null
+}
+
+export type LoadTakenSlotsResult = { ok: true } | { ok: false; message: string }
+
 export const useBookingStore = defineStore('booking', () => {
   const bookings = ref<BookingItem[]>([])
-  /** 全量预约列表拉取中（管理端 / 无 Supabase 场景），用于骨架屏与防重复操作 */
+  /** 全量预约列表拉取中（管理端），用于骨架屏与防重复操作 */
   const bookingsLoading = ref(false)
-  /** Supabase 匿名：某日已占区间（线路 / 开始时间 / 块长），不暴露客户信息 */
+  /** 匿名：某日已占区间（线路 / 开始时间 / 块长），不暴露客户信息 */
   const scheduleBlocksByDate = reactive<Record<string, PublicBookingBlock[]>>({})
-  /** 避免同一日期并发重复请求 */
-  const loadingByDate = reactive<Record<string, Promise<void> | undefined>>({})
+  /** 按日串行占档请求，避免并发竞态；同时解决 force 时在「等待他人请求」后直接 return 的问题 */
+  const takenSlotsFetchTail = reactive<Record<string, Promise<unknown>>>({})
+  /** 某日占档同步元信息（loading / 是否曾成功 / 最近错误） */
+  const takenSlotsMeta = reactive<Record<string, TakenSlotsMeta>>({})
 
   // 加载所有预约
   const hydrateBookings = async () => {
@@ -37,39 +50,75 @@ export const useBookingStore = defineStore('booking', () => {
         bookings.value = []
         return
       }
-      // 否则从 Supabase 拉取所有预约
+      // 从 FastAPI 或本地存储拉取全量预约
       bookings.value = await fetchBookings()
     } finally {
       bookingsLoading.value = false
     }
   }
-  // 只加载某日的已占时段
+  const getTakenSlotsMeta = (date: string): TakenSlotsMeta => {
+    if (!takenSlotsMeta[date]) {
+      takenSlotsMeta[date] = {
+        loading: false,
+        known: false,
+        lastError: null,
+        lastSuccessAt: null,
+      }
+    }
+    return takenSlotsMeta[date]
+  }
+
+  /**
+   * 加载某日已占时段（匿名 + 远程可用性模式）。
+   * - `verifyForSubmit: true`：提交前强制校验（REST 优先时仅接受直连 GET /booked-times 成功）。
+   * 返回 `ok: false` 表示本次拉取失败；若此前已成功过，缓存仍保留，但提交前必须 `ok: true`。
+   */
   const loadTakenSlotsForDate = async (
     date: string,
-    options?: { force?: boolean }
-  ) => {
-    // 匿名走占档缓存（Supabase RPC 或 REST GET /booked-times）；无远程配置则跳过
-    if (!date || !useRemoteBookingAvailability()) return
-    // 如果管理员，则直接返回
-    if (useAuthStore().canAccessAdmin) return
-    // 已有缓存且非强制刷新，直接命中缓存
-    if (!options?.force && date in scheduleBlocksByDate) return
-    // 同日期请求进行中则复用该请求，避免并发重复打后端
-    if (loadingByDate[date]) {
-      await loadingByDate[date]
-      return
-    }
-    // 否则从 Supabase 拉取某日的已占时段
-    const task = (async () => {
-      const blocks = await fetchScheduleBlocksForDate(date)
-      scheduleBlocksByDate[date] = blocks
-    })()
-    loadingByDate[date] = task
-    try {
-      await task
-    } finally {
-      delete loadingByDate[date]
-    }
+    options?: { force?: boolean; verifyForSubmit?: boolean }
+  ): Promise<LoadTakenSlotsResult> => {
+    const okTrue = (): LoadTakenSlotsResult => ({ ok: true })
+
+    if (!date || !useRemoteBookingAvailability()) return okTrue()
+    if (useAuthStore().canAccessAdmin) return okTrue()
+
+    const prev = takenSlotsFetchTail[date] ?? Promise.resolve()
+    const work = prev.catch(() => {}).then(async (): Promise<LoadTakenSlotsResult> => {
+      const meta = getTakenSlotsMeta(date)
+      if (
+        !options?.verifyForSubmit &&
+        !options?.force &&
+        meta.known &&
+        date in scheduleBlocksByDate
+      ) {
+        return okTrue()
+      }
+
+      meta.loading = true
+      meta.lastError = null
+      try {
+        const blocks = options?.verifyForSubmit
+          ? await fetchScheduleBlocksForSubmitVerify(date)
+          : await fetchScheduleBlocksForDate(date)
+        scheduleBlocksByDate[date] = blocks
+        meta.known = true
+        meta.lastSuccessAt = Date.now()
+        return okTrue()
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : '无法同步最新预约状态，请稍后再试。'
+        meta.lastError = message
+        return { ok: false, message }
+      } finally {
+        meta.loading = false
+      }
+    })
+
+    takenSlotsFetchTail[date] = work.then(
+      () => {},
+      () => {}
+    )
+    return (await work) as LoadTakenSlotsResult
   }
 
   /** 某开始时段对当前所选服务是否不可约（技师数 + 时长 + 缓冲） */
@@ -146,7 +195,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   // 添加预约
   const addBooking = async (newBooking: BookingItem) => {
-    // 调用 Supabase 添加预约
+    // 写入 FastAPI 或本地存储
     const created = await createBooking(newBooking)
     // 合并到已占时段缓存
     mergeBlockIntoCache(created)
@@ -161,7 +210,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   // 删除预约
   const removeBooking = async (id: number) => {
-    // 调用 Supabase 删除预约
+    // 删除预约
     await deleteBooking(id)
     // 重新加载所有预约
     await hydrateBookings()
@@ -169,7 +218,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   // 更新预约状态
   const updateStatus = async (id: number, status: BookingItem['status']) => {
-    // 调用 Supabase 更新预约状态
+    // 更新预约状态
     await patchBookingStatus(id, status)
     // 重新加载所有预约
     await hydrateBookings()
@@ -184,8 +233,11 @@ export const useBookingStore = defineStore('booking', () => {
     for (const k of Object.keys(scheduleBlocksByDate)) {
       delete scheduleBlocksByDate[k]
     }
-    for (const k of Object.keys(loadingByDate)) {
-      delete loadingByDate[k]
+    for (const k of Object.keys(takenSlotsFetchTail)) {
+      delete takenSlotsFetchTail[k]
+    }
+    for (const k of Object.keys(takenSlotsMeta)) {
+      delete takenSlotsMeta[k]
     }
   }
 
@@ -194,8 +246,10 @@ export const useBookingStore = defineStore('booking', () => {
     bookingsLoading,
     lastPaymentBooking,
     scheduleBlocksByDate,
+    takenSlotsMeta,
     hydrateBookings,
     loadTakenSlotsForDate,
+    getTakenSlotsMeta,
     isBooked,
     recommendAvailableSlots,
     addBooking,

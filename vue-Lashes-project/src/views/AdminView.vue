@@ -9,7 +9,7 @@ import { ref, computed, onMounted } from 'vue'
 const bookingStore = useBookingStore()
 
 onMounted(() => {
-  // 首屏若为匿名 + REST/SB 则未拉全表；mock / Supabase 管理员登录后进入后台需补拉
+  // 匿名访客首屏不拉全表；管理员进入后台后补拉
   void bookingStore.hydrateBookings()
 })
 const filter = ref('all')

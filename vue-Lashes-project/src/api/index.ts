@@ -2,7 +2,6 @@ export {
   ApiError,
   getApiBaseUrl,
   isRemoteApi,
-  isRestApiPreferred,
   registerAccessTokenGetter,
   request,
 } from './client'

@@ -1,7 +1,5 @@
 import { services } from '@/data/services'
 import type { ServiceItem } from '@/types/service'
-import { isSupabaseConfigured } from '@/lib/supabase'
-import { recommendServiceViaSupabaseEdge } from '@/services/serviceRecommendEdge'
 
 export type ServiceAiRecommendResult = {
   schemaVersion: '1.0'
@@ -9,48 +7,23 @@ export type ServiceAiRecommendResult = {
   category: 'nails' | 'lashes'
   confidence: 'high' | 'medium' | 'low'
   responseLanguage: 'zh' | 'en' | 'mixed'
-  /** 主说明（2–4 句量级） */
   summary: string
-  /** 2–4 条独立要点 */
   supportingPoints: string[]
-  /** summary + 编号要点，便于复制或兼容旧展示 */
   why: string
 }
 
 const normalize = (s: string) => s.trim().toLowerCase()
 
-function useOpenAiRecommendPath(): boolean {
-  return (
-    import.meta.env.VITE_ENABLE_OPENAI_SERVICE_RECOMMEND === 'true' &&
-    isSupabaseConfigured()
-  )
-}
-
 /**
- * 推荐服务：若 `VITE_ENABLE_OPENAI_SERVICE_RECOMMEND=true` 且已配置 Supabase，
- * 则通过 Edge Function（服务端 DeepSeek）；失败或未启用时回退到本地关键词逻辑。
+ * 服务推荐：本地关键词规则（不依赖 Supabase / 外网大模型）。
  */
 export async function recommendServiceFromPrompt(
   rawInput: string,
   options?: { minDelayMs?: number; forceLocal?: boolean }
 ): Promise<ServiceAiRecommendResult> {
-  const input = rawInput.trim()
-  if (!input) {
-    throw new Error('Please describe what you are looking for.')
-  }
-
-  if (!options?.forceLocal && useOpenAiRecommendPath()) {
-    try {
-      return await recommendServiceViaSupabaseEdge(input)
-    } catch (e) {
-      console.warn('[service-ai] Edge / remote model failed, using local rules', e)
-    }
-  }
-
   return recommendServiceFromPromptLocal(rawInput, options)
 }
 
-/** 本地关键词 + 描述匹配，不调用外网大模型 */
 export async function recommendServiceFromPromptLocal(
   rawInput: string,
   options?: { minDelayMs?: number }
@@ -72,7 +45,6 @@ export async function recommendServiceFromPromptLocal(
     scores.set(name, (scores.get(name) ?? 0) + w)
   }
 
-  // --- 品类倾向 ---
   const nailsHint =
     /nail|manicure|polish|gel|指甲|美甲|甲油|延长甲|手部|修手/.test(text) ||
     /nail\s*extension|延长(?!睫)/.test(text)
@@ -92,7 +64,6 @@ export async function recommendServiceFromPromptLocal(
     add('Lash Lift', 2)
   }
 
-  // --- 美甲 ---
   if (/gel|甲油胶|持久|亮面|chip|long-lasting|lasting/.test(text)) {
     add('Gel Manicure', 5)
   }
@@ -108,7 +79,6 @@ export async function recommendServiceFromPromptLocal(
     add('Classic Manicure', 4)
   }
 
-  // --- 美睫 ---
   if (/lift|烫|角蛋白|curl|翘睫|自己的睫毛|原生|不嫁接|no extension|natural lash(?! extension)/.test(text)) {
     add('Lash Lift', 7)
   }
@@ -129,7 +99,6 @@ export async function recommendServiceFromPromptLocal(
     add('Classic Lash Extensions', 5)
   }
 
-  // 描述文本弱匹配
   for (const item of services) {
     const blob = normalize(`${item.name} ${item.shortDescription} ${item.description}`)
     const tokens = text.split(/[\s,.;，。；、]+/).filter((t) => t.length >= 3)

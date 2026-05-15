@@ -11,6 +11,7 @@
  * 不兼容导致 502。
  */
 
+/** 返回给前端的稳定契约（与 src/services/bookingNotification.ts 对齐） */
 type BookingNotifyPayload = {
   customerName?: string
   customerPhone?: string
@@ -24,13 +25,14 @@ type BookingNotifyPayload = {
     status?: string
   }
 }
-
+// CORS 头部
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
 }
 
+// 解析管理员邮箱
 function parseAdminEmails(): string[] {
   const raw = Deno.env.get('BOOKING_ADMIN_EMAILS') ?? ''
   return raw
@@ -39,6 +41,7 @@ function parseAdminEmails(): string[] {
     .filter(Boolean)
 }
 
+// 发送邮件
 async function sendMail(
   to: string[],
   subject: string,
